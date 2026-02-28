@@ -5,10 +5,14 @@ import { defineFeedItem } from "./components/feed-item";
 import { defineMdEditor } from "./components/md-editor";
 import { defineHomeView } from "./views/home-view";
 import { defineCreateView } from "./views/create-view";
+import { definePaintCanvas } from "./components/paint-canvas";
+import { definePaintView } from "./views/paint-view";
 
 defineTopNav();
 defineFeedItem();
 defineMdEditor();
 defineHomeView();
 defineCreateView();
+definePaintCanvas();
+definePaintView();
 defineAppShell();

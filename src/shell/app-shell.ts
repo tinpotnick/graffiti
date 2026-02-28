@@ -1,4 +1,4 @@
-type ViewTag = "view-home" | "view-create";
+type ViewTag = "view-home" | "view-create" | "view-paint";
 
 const template = document.createElement("template");
 template.innerHTML = `
@@ -10,6 +10,10 @@ template.innerHTML = `
       margin: 0 auto;
       padding: 1rem;
       padding-bottom: 6.5rem;
+    }
+    .container[data-route="paint"] {
+      max-width: none;
+      padding: 0;
     }
   </style>
 `;
@@ -75,6 +79,7 @@ class AppShell extends HTMLElement {
   private renderRoute(pathname: string) {
     const routeTag = this.resolveRoute(pathname);
     this.container!.replaceChildren(document.createElement(routeTag));
+    this.container!.dataset.route = pathname.replace(/^\//, "") || "home";
   }
 
   private resolveRoute(pathname: string): ViewTag {
@@ -83,6 +88,8 @@ class AppShell extends HTMLElement {
         return "view-home";
       case "/create":
         return "view-create";
+      case "/paint":
+        return "view-paint";
       default:
         return "view-home";
     }

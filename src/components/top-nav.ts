@@ -9,6 +9,18 @@ template.innerHTML = `
         <rect x="13" y="14" width="7" height="6" rx="1.2" />
       </svg>
     </a>
+    <a class="nav-button" href="/paint" aria-label="Paint">
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <!-- spray can body -->
+        <rect style="fill:none" x="7" y="9" width="6" height="12" rx="1.5"/>
+        <!-- nozzle -->
+        <rect style="fill:none" x="9" y="5" width="2" height="5" rx="0.5"/>
+        <!-- spray dots -->
+        <circle style="stroke:none" cx="16.5" cy="8"  r="1.4"/>
+        <circle style="stroke:none" cx="18.5" cy="11" r="1.1"/>
+        <circle style="stroke:none" cx="16"   cy="13" r="0.9"/>
+      </svg>
+    </a>
     <a class="nav-button create" href="/create" aria-label="Create">
       <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
         <path d="M12 5.25v13.5M5.25 12h13.5" />
