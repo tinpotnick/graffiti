@@ -1,0 +1,51 @@
+services:
+  frontend-dev:
+    image: node:20-bookworm
+    working_dir: /app
+    command: >
+      bash -lc "
+      corepack enable &&
+      pnpm config set store-dir /pnpm/store &&
+      pnpm install --no-frozen-lockfile &&
+      pnpm dev --host 0.0.0.0 --port 1420
+      "
+    ports:
+      - "1420:1420"
+    volumes:
+      - .:/app:z
+      - node_modules:/app/node_modules
+      - pnpm_store:/pnpm/store
+
+  frontend-check:
+    image: node:20-bookworm
+    working_dir: /app
+    command: >
+      bash -lc "
+      corepack enable &&
+      pnpm config set store-dir /pnpm/store &&
+      pnpm install --no-frozen-lockfile &&
+      pnpm run check
+      "
+    volumes:
+      - .:/app:z
+      - node_modules:/app/node_modules
+      - pnpm_store:/pnpm/store
+
+  frontend-build:
+    image: node:20-bookworm
+    working_dir: /app
+    command: >
+      bash -lc "
+      corepack enable &&
+      pnpm config set store-dir /pnpm/store &&
+      pnpm install --no-frozen-lockfile &&
+      pnpm run build
+      "
+    volumes:
+      - .:/app:z
+      - node_modules:/app/node_modules
+      - pnpm_store:/pnpm/store
+
+volumes:
+  node_modules:
+  pnpm_store:

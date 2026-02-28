@@ -9,8 +9,10 @@ WORKDIR /app
 # Copy package files
 COPY package.json pnpm-lock.yaml ./
 
-# Install frontend dependencies
-RUN pnpm install --frozen-lockfile
+# Install frontend dependencies.
+# Use --no-frozen-lockfile so Docker builds still work when package.json changed
+# but pnpm-lock.yaml has not been regenerated yet.
+RUN pnpm install --no-frozen-lockfile
 
 # Copy frontend source
 COPY . .
@@ -47,7 +49,7 @@ WORKDIR /app
 COPY package.json pnpm-lock.yaml ./
 
 # Install Node.js dependencies (needed for Tauri CLI)
-RUN pnpm install --frozen-lockfile
+RUN pnpm install --no-frozen-lockfile
 
 # Copy the entire project
 COPY . .

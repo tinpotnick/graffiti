@@ -1,22 +1,12 @@
 #!/bin/bash
 
-# Docker build script for Tauri application
+set -euo pipefail
 
-set -e
+echo "Building Tauri bundles with Docker..."
 
-echo "Building Tauri application with Docker..."
-
-# Build the Docker image
-docker build -t graffiti-build .
-
-# Create output directory
+# Build only the export stage and copy artifacts directly to host.
 mkdir -p dist-bundle
+docker build --target export --output type=local,dest=./dist-bundle .
 
-# Extract the built artifacts
-echo "Extracting build artifacts..."
-docker create --name graffiti-artifacts graffiti-build
-docker cp graffiti-artifacts:/app/src-tauri/target/release/bundle/. ./dist-bundle/
-docker rm graffiti-artifacts
-
-echo "Build complete! Artifacts are in ./dist-bundle/"
+echo "Build complete. Artifacts are in ./dist-bundle/"
 ls -lh dist-bundle/

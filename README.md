@@ -1,64 +1,80 @@
-# Tauri + SvelteKit + TypeScript
+# Tauri + Web Components + TypeScript
 
-This template should help get you started developing with Tauri, SvelteKit and TypeScript in Vite.
+This project uses Tauri with a Vite + TypeScript frontend built on standards-based Web Components.
+For agent-specific execution rules, see `AGENTS.md`.
 
-## Building with Docker
+## Docker-first workflow
 
-If you don't want to install the full development environment locally, you can use Docker to build the application.
+This repository is set up so you can develop and build without installing Node, pnpm, or Rust on your host.
 
-### Easy method (recommended)
+### 1) Quick frontend iteration (hot reload)
 
-Use the provided build script:
+Start the frontend dev server in Docker:
+
+```sh
+docker compose up frontend-dev
+```
+
+Then open `http://localhost:1420`.
+Code changes on your host are reflected inside the container via bind mounts.
+
+Stop it with:
+
+```sh
+docker compose down
+```
+
+### 2) Type checks (containerized)
+
+```sh
+docker compose run --rm frontend-check
+```
+
+### 3) Frontend production build (containerized)
+
+```sh
+docker compose run --rm frontend-build
+```
+
+### 4) Full Tauri bundle build (AppImage/.deb, etc.)
 
 ```sh
 ./docker-build.sh
 ```
 
-The built application bundles (AppImage, .deb, etc.) will be in the `./dist-bundle` directory.
+Artifacts are exported to `./dist-bundle/`.
 
-### Manual method
-
-```sh
-# Build the Tauri application using Docker
-docker build -t graffiti-build .
-
-# Extract the built artifacts to your local machine
-docker create --name graffiti-artifacts graffiti-build
-docker cp graffiti-artifacts:/app/src-tauri/target/release/bundle ./dist-bundle
-docker rm graffiti-artifacts
-```
-
-### Alternative: Direct export (requires BuildKit)
+### 5) Manual full build (equivalent)
 
 ```sh
-# Build and export artifacts directly
-docker build --output type=local,dest=./dist-bundle --target=export .
+docker build --target export --output type=local,dest=./dist-bundle .
 ```
 
-## Local Development (requires full dev environment)
+## Notes
+- There is currently no automated unit/integration test suite. The primary validation command is `frontend-check` (TypeScript check).
+- Tauri desktop runtime development (`tauri dev`) usually needs host GUI integration. For a clean host workflow, iterate on frontend in Docker and run full Tauri bundle builds in Docker.
 
-### Testing / Checks
+## Troubleshooting
+- If dependencies look stale after changing `package.json`, rerun:
+```sh
+docker compose run --rm frontend-check
+```
+- If you want a clean dependency reset in Docker volumes:
+```sh
+docker compose down -v
+docker compose up frontend-dev
+```
 
-There are no automated test suites wired up yet, but you can run the type + Svelte checks:
+## Optional local (non-Docker)
 
+If you do want local tooling:
 ```sh
 pnpm install
+pnpm run dev
 pnpm run check
-```
-
-Watch mode:
-
-```sh
-pnpm run check:watch
-```
-
-Optional sanity checks for a production build:
-
-```sh
 pnpm run build
-pnpm run preview
 ```
 
 ## Recommended IDE Setup
 
-[VS Code](https://code.visualstudio.com/) + [Svelte](https://marketplace.visualstudio.com/items?itemName=svelte.svelte-vscode) + [Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode) + [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer).
+[VS Code](https://code.visualstudio.com/) + [Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode) + [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer).
