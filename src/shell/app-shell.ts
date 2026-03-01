@@ -80,6 +80,7 @@ class AppShell extends HTMLElement {
     const routeTag = this.resolveRoute(pathname);
     this.container!.replaceChildren(document.createElement(routeTag));
     this.container!.dataset.route = pathname.replace(/^\//, "") || "home";
+    window.dispatchEvent(new CustomEvent("route-change", { detail: { pathname } }));
   }
 
   private resolveRoute(pathname: string): ViewTag {

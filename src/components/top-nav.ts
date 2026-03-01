@@ -65,6 +65,12 @@ template.innerHTML = `
       transform: translateY(0);
       filter: brightness(0.97);
     }
+    .nav-button.active:not(.create) {
+      background: #0d0d0d;
+      color: #f6f6f6;
+      border-color: rgba(255, 255, 255, 0.08);
+      box-shadow: 0 12px 24px rgba(0, 0, 0, 0.3);
+    }
     .nav-button.create {
       background: #0d0d0d;
       color: #f6f6f6;
@@ -84,10 +90,40 @@ template.innerHTML = `
 `;
 
 class TopNav extends HTMLElement {
+  private _root: ShadowRoot;
+
+  private _onRouteChange = (e: Event) => {
+    const { pathname } = (e as CustomEvent<{ pathname: string }>).detail;
+    this._updateActive(pathname);
+  };
+
+  private _onPopState = () => {
+    this._updateActive(window.location.pathname);
+  };
+
   constructor() {
     super();
-    const root = this.attachShadow({ mode: "open" });
-    root.appendChild(template.content.cloneNode(true));
+    this._root = this.attachShadow({ mode: "open" });
+    this._root.appendChild(template.content.cloneNode(true));
+  }
+
+  connectedCallback() {
+    window.addEventListener("route-change", this._onRouteChange);
+    window.addEventListener("popstate", this._onPopState);
+    this._updateActive(window.location.pathname);
+  }
+
+  disconnectedCallback() {
+    window.removeEventListener("route-change", this._onRouteChange);
+    window.removeEventListener("popstate", this._onPopState);
+  }
+
+  private _updateActive(pathname: string) {
+    this._root.querySelectorAll<HTMLAnchorElement>(".nav-button").forEach((btn) => {
+      const href = btn.getAttribute("href") ?? "/";
+      const active = href === "/" ? pathname === "/" : pathname.startsWith(href);
+      btn.classList.toggle("active", active);
+    });
   }
 }
 
