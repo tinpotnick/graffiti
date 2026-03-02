@@ -1,5 +1,53 @@
 :root {
-  font-family: "Space Grotesk", sans-serif;
+  /* Typography */
+  --font-body:  "Space Grotesk", sans-serif;
+  --font-mono:  ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  --font-pixel: "Press Start 2P", monospace;
+
+  /* Light zone surfaces */
+  --surface:         #fafafa;
+  --surface-raised:  #ffffff;
+  --surface-inset:   #f7f7f7;
+  --surface-header:  #fbfbfb;
+
+  /* Light zone text */
+  --text:            #0b0b0b;
+  --text-inverse:    #f6f6f6;
+  --text-muted:      rgba(0, 0, 0, 0.35);
+  --text-secondary:  rgba(0, 0, 0, 0.6);
+
+  /* Light zone borders */
+  --border:          rgba(0, 0, 0, 0.08);
+  --border-medium:   rgba(0, 0, 0, 0.12);
+  --border-strong:   rgba(0, 0, 0, 0.18);
+  --border-feed:     #eeeeee;
+  --border-editor:   rgba(127, 127, 127, 0.35);
+
+  /* Interactive */
+  --accent:          #0d0d0d;
+  --surface-code:    rgba(0, 0, 0, 0.06);
+
+  /* Nav glass effect */
+  --nav-bg-from:       rgba(255, 255, 255, 0.92);
+  --nav-bg-to:         rgba(255, 255, 255, 0.98);
+  --nav-border-top:    rgba(0, 0, 0, 0.06);
+  --nav-btn-border:    rgba(0, 0, 0, 0.08);
+  --nav-active-border: rgba(255, 255, 255, 0.08);
+
+  /* Shadows */
+  --shadow-nav:        0 -14px 30px rgba(0, 0, 0, 0.08);
+  --shadow-btn:        0 12px 22px rgba(0, 0, 0, 0.14);
+  --shadow-btn-hover:  0 14px 24px rgba(0, 0, 0, 0.18);
+  --shadow-btn-active: 0 12px 24px rgba(0, 0, 0, 0.3);
+  --shadow-input:      0 10px 24px rgba(0, 0, 0, 0.08);
+  --shadow-publish:    0 10px 20px rgba(0, 0, 0, 0.2);
+
+  /* Border radius */
+  --radius-sm:   3px;
+  --radius-md:   6px;
+  --radius-lg:   10px;
+  --radius-xl:   12px;
+  --radius-pill: 999px;
 }
 
 * {
@@ -13,6 +61,7 @@ body {
 }
 
 body {
-  background: #fafafa;
-  color: #0b0b0b;
+  background: var(--surface);
+  color: var(--text);
+  font-family: var(--font-body);
 }

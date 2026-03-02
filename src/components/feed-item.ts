@@ -9,7 +9,7 @@ template.innerHTML = `
   <style>
     article {
       padding: 1rem 0;
-      border-bottom: 1px solid #eee;
+      border-bottom: 1px solid var(--border-feed);
     }
     h2 {
       margin: 0 0 0.25rem 0;

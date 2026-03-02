@@ -65,14 +65,22 @@ const STYLES = `
     flex-direction: column;
     min-height: 100dvh;
     background: #0a0a12;
-    color: #c0bfd6;
-    font-family: 'Press Start 2P', monospace;
+    color: var(--px-text);
+    font-family: var(--font-pixel);
     font-size: 8px;
     box-sizing: border-box;
+    /* Bevel system */
     --bl: #3d3d5c;
     --bd: #06060e;
     --bg-up: #1a1a2e;
     --bg-dn: #0d0d1a;
+    /* Semantic paint-zone tokens */
+    --px-text:    #c0bfd6;
+    --px-muted:   #4a4a7a;
+    --px-active:  #ffec27;
+    --px-mirror:  #29adff;
+    --px-danger:  #ff004d;
+    --px-success: #00e436;
   }
 
   .view {
@@ -91,18 +99,18 @@ const STYLES = `
     flex: 1; padding: 10px 0;
     font-family: inherit; font-size: 7px; letter-spacing: 1.5px;
     cursor: pointer;
-    background: var(--bg-up); color: #4a4a7a;
+    background: var(--bg-up); color: var(--px-muted);
     border: 2px solid;
     border-color: var(--bl) var(--bd) var(--bd) var(--bl);
   }
   .tab.active {
-    background: var(--bg-dn); color: #ffec27;
+    background: var(--bg-dn); color: var(--px-active);
     border-color: var(--bd) var(--bl) var(--bl) var(--bd);
   }
 
   .dims-badge {
     display: flex; align-items: center;
-    padding: 0 8px; color: #4a4a7a;
+    padding: 0 8px; color: var(--px-muted);
     font-size: 6px; white-space: nowrap; letter-spacing: 1px;
   }
 
@@ -122,7 +130,7 @@ const STYLES = `
 
   .row-label {
     font-size: 5px; letter-spacing: 1.5px;
-    color: #4a4a7a;
+    color: var(--px-muted);
     flex-shrink: 0;
     width: 28px; text-align: right;
     padding-right: 4px;
@@ -134,13 +142,13 @@ const STYLES = `
     width: 36px; height: 36px;
     display: grid; place-items: center;
     cursor: pointer;
-    background: var(--bg-up); color: #c0bfd6;
+    background: var(--bg-up); color: var(--px-text);
     border: 2px solid;
     border-color: var(--bl) var(--bd) var(--bd) var(--bl);
     flex-shrink: 0; padding: 0;
   }
   .tool-btn.active {
-    background: var(--bg-dn); color: #ffec27;
+    background: var(--bg-dn); color: var(--px-active);
     border-color: var(--bd) var(--bl) var(--bl) var(--bd);
   }
   .tool-btn svg { width: 17px; height: 17px; pointer-events: none; }
@@ -156,14 +164,14 @@ const STYLES = `
     height: 36px; padding: 0 7px;
     display: flex; align-items: center;
     cursor: pointer;
-    background: var(--bg-up); color: #4a4a7a;
+    background: var(--bg-up); color: var(--px-muted);
     border: 2px solid;
     border-color: var(--bl) var(--bd) var(--bd) var(--bl);
     font-family: inherit; font-size: 6px; letter-spacing: 1px;
     flex-shrink: 0;
   }
   .shape-mode-btn.active {
-    background: var(--bg-dn); color: #ffec27;
+    background: var(--bg-dn); color: var(--px-active);
     border-color: var(--bd) var(--bl) var(--bl) var(--bd);
   }
 
@@ -173,14 +181,14 @@ const STYLES = `
     width: 28px; height: 36px;
     display: grid; place-items: center;
     cursor: pointer;
-    background: var(--bg-up); color: #4a4a7a;
+    background: var(--bg-up); color: var(--px-muted);
     border: 2px solid;
     border-color: var(--bl) var(--bd) var(--bd) var(--bl);
     font-family: inherit; font-size: 7px;
     padding: 0; flex-shrink: 0;
   }
   .size-btn.active {
-    background: var(--bg-dn); color: #ffec27;
+    background: var(--bg-dn); color: var(--px-active);
     border-color: var(--bd) var(--bl) var(--bl) var(--bd);
   }
 
@@ -189,30 +197,55 @@ const STYLES = `
     width: 36px; height: 36px;
     display: grid; place-items: center;
     cursor: pointer;
-    background: var(--bg-up); color: #4a4a7a;
+    background: var(--bg-up); color: var(--px-muted);
     border: 2px solid;
     border-color: var(--bl) var(--bd) var(--bd) var(--bl);
     flex-shrink: 0; padding: 0;
   }
   .mirror-btn.active {
-    background: var(--bg-dn); color: #29adff;
+    background: var(--bg-dn); color: var(--px-mirror);
     border-color: var(--bd) var(--bl) var(--bl) var(--bd);
   }
   .mirror-btn svg { width: 17px; height: 17px; pointer-events: none; }
 
-  /* ── Palette ────────────────────────────────── */
-  .palette-strip {
-    display: flex; gap: 3px;
-    flex: 1; overflow-x: auto; align-items: center;
-    scrollbar-width: none;
+  /* ── Palette panel ──────────────────────────── */
+  .palette-panel {
+    display: flex; flex-direction: column; gap: 4px;
+    border: 2px solid var(--bl);
+    padding: 6px;
+    background: var(--bg-dn);
   }
-  .palette-strip::-webkit-scrollbar { display: none; }
-  .swatch {
-    width: 36px; height: 36px; flex-shrink: 0;
-    border: 2px solid transparent;
-    cursor: pointer; padding: 0; box-sizing: border-box;
+  .palette-panel-header { display: flex; align-items: center; gap: 6px; }
+  .palette-label { color: var(--px-muted); font-size: 6px; letter-spacing: 1.5px; flex-shrink: 0; }
+  .palette-groups {
+    display: flex; gap: 3px; flex: 1;
+    overflow-x: auto; scrollbar-width: none;
   }
-  .swatch.active { border-color: #fff; box-shadow: inset 0 0 0 1px #000; }
+  .palette-groups::-webkit-scrollbar { display: none; }
+  .palette-group-btn {
+    width: 28px; height: 28px;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0; cursor: pointer; padding: 0;
+    background: var(--bg-up);
+    border: 2px solid; border-color: var(--bl) var(--bd) var(--bd) var(--bl);
+  }
+  .palette-group-btn.active {
+    background: var(--bg-dn);
+    border-color: var(--bd) var(--bl) var(--bl) var(--bd);
+  }
+  .palette-group-dot {
+    width: 12px; height: 12px; display: block; flex-shrink: 0;
+    image-rendering: pixelated;
+  }
+  .palette-group-btn.active .palette-group-dot {
+    outline: 1px solid rgba(255,255,255,0.7); outline-offset: 1px;
+  }
+  .palette-shades { display: flex; gap: 3px; }
+  .palette-shades .swatch {
+    width: 28px; height: 28px; flex-shrink: 0;
+    border: 2px solid transparent; cursor: pointer; padding: 0; box-sizing: border-box;
+  }
+  .palette-shades .swatch.active { border-color: #fff; box-shadow: inset 0 0 0 1px #000; }
 
   /* ── Stamp panel ────────────────────────────── */
   .stamp-panel {
@@ -222,18 +255,18 @@ const STYLES = `
     background: var(--bg-dn);
   }
   .stamp-panel-header { display: flex; align-items: center; gap: 6px; }
-  .stamp-label { color: #4a4a7a; font-size: 6px; letter-spacing: 1.5px; flex-shrink: 0; }
+  .stamp-label { color: var(--px-muted); font-size: 6px; letter-spacing: 1.5px; flex-shrink: 0; }
   .stamp-cats { display: flex; gap: 3px; flex-wrap: wrap; }
   .stamp-cat-btn {
     padding: 4px 7px;
     font-family: inherit; font-size: 6px; letter-spacing: 1px;
     cursor: pointer;
-    background: var(--bg-up); color: #4a4a7a;
+    background: var(--bg-up); color: var(--px-muted);
     border: 2px solid;
     border-color: var(--bl) var(--bd) var(--bd) var(--bl);
   }
   .stamp-cat-btn.active {
-    background: var(--bg-dn); color: #ffec27;
+    background: var(--bg-dn); color: var(--px-active);
     border-color: var(--bd) var(--bl) var(--bl) var(--bd);
   }
   .stamp-grid {
@@ -251,7 +284,7 @@ const STYLES = `
     box-sizing: border-box;
     display: flex; align-items: center; justify-content: center;
   }
-  .stamp-thumb.active { border-color: #ffec27; background: var(--bg-dn); }
+  .stamp-thumb.active { border-color: var(--px-active); background: var(--bg-dn); }
   .stamp-thumb canvas { image-rendering: pixelated; display: block; }
 
   /* ── Canvas ─────────────────────────────────── */
@@ -278,7 +311,7 @@ const STYLES = `
     flex: 1; padding: 10px 6px;
     font-family: inherit; font-size: 7px; letter-spacing: 1px;
     cursor: pointer;
-    background: var(--bg-up); color: #c0bfd6;
+    background: var(--bg-up); color: var(--px-text);
     border: 2px solid;
     border-color: var(--bl) var(--bd) var(--bd) var(--bl);
     text-align: center;
@@ -288,8 +321,8 @@ const STYLES = `
     background: var(--bg-dn);
   }
   .btn:disabled { opacity: 0.35; cursor: default; }
-  .btn.danger  { color: #ff004d; }
-  .btn.primary { color: #00e436; }
+  .btn.danger  { color: var(--px-danger); }
+  .btn.primary { color: var(--px-success); }
 `;
 
 class PaintView extends HTMLElement {
@@ -297,7 +330,8 @@ class PaintView extends HTMLElement {
   private _canvas!: PaintCanvas;
   private _mode: Mode = "tag";
   private _tool: PaintTool = "pencil";
-  private _colorIndex = 8;
+  private _colorIndex = 72;
+  private _colorGroup = 4;
   private _brushSize = 1;
   private _mirrorX = false;
   private _shapeMode: "outline" | "fill" = "outline";
@@ -385,8 +419,6 @@ class PaintView extends HTMLElement {
             </div>
             <div class="toolbar-divider"></div>
             <button class="mirror-btn" data-action="mirror" title="Mirror X (M)">${ICONS.mirror}</button>
-            <div class="toolbar-divider"></div>
-            <div class="palette-strip" id="palette"></div>
           </div>
           <div class="toolbar-row">
             <span class="row-label">SHAPE</span>
@@ -395,6 +427,14 @@ class PaintView extends HTMLElement {
             <button class="shape-mode-btn" id="shape-mode-btn" data-action="shape-mode"
               title="Toggle outline / fill (T)">OUT</button>
           </div>
+        </div>
+
+        <div class="palette-panel">
+          <div class="palette-panel-header">
+            <span class="palette-label">COLOR</span>
+            <div class="palette-groups" id="palette-groups"></div>
+          </div>
+          <div class="palette-shades" id="palette-shades"></div>
         </div>
 
         <div class="stamp-panel">
@@ -416,16 +456,7 @@ class PaintView extends HTMLElement {
       </div>
     `;
 
-    // Palette swatches
-    const paletteEl = this._shadow.querySelector<HTMLElement>("#palette")!;
-    PALETTE_HEX.forEach((hex, i) => {
-      const sw = document.createElement("button");
-      sw.className = "swatch" + (i === this._colorIndex ? " active" : "");
-      sw.style.background = hex;
-      sw.dataset.color = String(i);
-      sw.title = hex;
-      paletteEl.appendChild(sw);
-    });
+    this._buildPalette();
 
     // Stamp category buttons
     const catsEl = this._shadow.querySelector<HTMLElement>("#stamp-cats")!;
@@ -438,6 +469,36 @@ class PaintView extends HTMLElement {
     });
 
     this._buildStampGrid(this._selectedCat);
+  }
+
+  private _buildPalette() {
+    const groupsEl = this._shadow.querySelector<HTMLElement>("#palette-groups")!;
+    for (let g = 0; g < 16; g++) {
+      const btn = document.createElement("button");
+      btn.className = "palette-group-btn" + (g === this._colorGroup ? " active" : "");
+      btn.dataset.group = String(g);
+      const dot = document.createElement("span");
+      dot.className = "palette-group-dot";
+      dot.style.background = PALETTE_HEX[g * 16 + 8];
+      btn.appendChild(dot);
+      groupsEl.appendChild(btn);
+    }
+    this._buildShadeRow(this._colorGroup);
+  }
+
+  private _buildShadeRow(group: number) {
+    const shadesEl = this._shadow.querySelector<HTMLElement>("#palette-shades")!;
+    shadesEl.innerHTML = "";
+    for (let s = 0; s < 16; s++) {
+      const i = group * 16 + s;
+      if (i >= PALETTE_HEX.length) break;
+      const sw = document.createElement("button");
+      sw.className = "swatch" + (i === this._colorIndex ? " active" : "");
+      sw.style.background = PALETTE_HEX[i];
+      sw.dataset.color = String(i);
+      sw.title = PALETTE_HEX[i];
+      shadesEl.appendChild(sw);
+    }
   }
 
   private _buildStampGrid(catId: string) {
@@ -465,13 +526,16 @@ class PaintView extends HTMLElement {
     c.style.width = "32px";
     c.style.height = "32px";
     const ctx = c.getContext("2d")!;
-    ctx.fillStyle = "#0d0d1a";
+    const THUMB_BG  = "#0d0d1a";
+    const THUMB_FG1 = "#c0bfd6";
+    const THUMB_FG2 = "#ffffff";  // pure white — matches palette index 31
+    ctx.fillStyle = THUMB_BG;
     ctx.fillRect(0, 0, c.width, c.height);
     for (let y = 0; y < stamp.height; y++) {
       for (let x = 0; x < stamp.width; x++) {
         const v = stamp.data[y * stamp.width + x];
         if (!v) continue;
-        ctx.fillStyle = v === 1 ? "#c0bfd6" : "#fff1e8";
+        ctx.fillStyle = v === 1 ? THUMB_FG1 : THUMB_FG2;
         ctx.fillRect(x * scale, y * scale, scale, scale);
       }
     }
@@ -550,6 +614,16 @@ class PaintView extends HTMLElement {
       if (t.dataset.mode) { this._switchMode(t.dataset.mode as Mode); return; }
       if (t.dataset.tool) { this._selectTool(t.dataset.tool as PaintTool); return; }
       if (t.dataset.size !== undefined) { this._selectBrushSize(parseInt(t.dataset.size)); return; }
+
+      if (t.dataset.group !== undefined) {
+        const g = parseInt(t.dataset.group);
+        if (g !== this._colorGroup) {
+          this._colorGroup = g;
+          this._buildShadeRow(g);
+          this._updateGroupUI();
+        }
+        return;
+      }
 
       if (t.dataset.color !== undefined) {
         this._colorIndex = parseInt(t.dataset.color);
@@ -649,8 +723,20 @@ class PaintView extends HTMLElement {
   }
 
   private _updateColorUI() {
-    this._shadow.querySelectorAll<HTMLElement>(".swatch").forEach((sw) => {
+    const newGroup = Math.floor(this._colorIndex / 16);
+    if (newGroup !== this._colorGroup) {
+      this._colorGroup = newGroup;
+      this._buildShadeRow(newGroup);
+      this._updateGroupUI();
+    }
+    this._shadow.querySelectorAll<HTMLElement>(".palette-shades .swatch").forEach((sw) => {
       sw.classList.toggle("active", parseInt(sw.dataset.color!) === this._colorIndex);
+    });
+  }
+
+  private _updateGroupUI() {
+    this._shadow.querySelectorAll<HTMLElement>(".palette-group-btn").forEach((btn) => {
+      btn.classList.toggle("active", parseInt(btn.dataset.group!) === this._colorGroup);
     });
   }
 

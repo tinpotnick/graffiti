@@ -1,8 +1,53 @@
-export const PALETTE_HEX = [
-  "#000000", "#1d2b53", "#7e2553", "#008751",
-  "#ab5236", "#5f574f", "#c2c3c7", "#fff1e8",
-  "#ff004d", "#ffa300", "#ffec27", "#00e436",
-  "#29adff", "#83769c", "#ff77a8", "#ffccaa",
+export const PALETTE_HEX: string[] = [
+  // ── G0: Blacks & dark grays ── 0-15
+  "#050505","#0e0e0e","#181818","#222222","#2e2e2e","#3a3a3a","#484848","#565656",
+  "#666666","#787878","#8a8a8a","#9c9c9c","#aeaeae","#c0c0c0","#d8d8d8","#ededed",
+  // ── G1: Cool grays & whites ── 16-31
+  "#1a1a22","#252530","#32323e","#3e3e4c","#4e4e5e","#5e5e70","#6e6e82","#808094",
+  "#9494a8","#a8a8bc","#bcbcd0","#d0d0e0","#e0e0ec","#ececf4","#f6f6fa","#ffffff",
+  // ── G2: Warm neutrals — concrete, sand, cream ── 32-47
+  "#1a1510","#261e16","#342a1e","#443822","#564828","#6a5a34","#7e6e44","#948054",
+  "#aa9464","#bea87a","#cebc8e","#dcd0a4","#e8e0b8","#f0eacc","#f6f2de","#faf8ee",
+  // ── G3: Metallics — dark bronze → burnished gold → chrome ── 48-63
+  "#1c1200","#2e1e00","#402a00","#563800","#704800","#8a5c0a","#a8700e","#c48418",
+  "#d89828","#e8ac38","#f0c050","#f8d468","#fce090","#feeab8","#fff0d0","#fff8e8",
+  // ── G4: Reds — dark maroon → signal red → coral ── 64-79
+  "#1a0000","#2e0000","#440000","#5e0408","#780a10","#920e18","#ac1820","#c82028",
+  "#e03030","#f04040","#f85858","#ff6e6e","#ff8c8c","#ffa8a8","#ffc4c4","#ffe0e0",
+  // ── G5: Oranges — dark amber → fire orange → peach ── 80-95
+  "#1e0c00","#301400","#481e00","#602c00","#783c00","#944c00","#b06000","#cc7800",
+  "#e08c10","#f0a020","#f8b438","#ffc454","#ffd47a","#ffe09c","#ffecba","#fff4d8",
+  // ── G6: Yellows — deep gold → chrome yellow → pale lemon ── 96-111
+  "#141000","#201800","#302400","#463400","#5e4800","#7a6000","#9e7c00","#c09800",
+  "#d8b000","#f0cc00","#f8dc18","#ffe835","#ffee60","#fff280","#fff6a8","#fffbd0",
+  // ── G7: Limes & acid greens — olive → neon lime ── 112-127
+  "#0c1200","#141e00","#1e2c00","#2c3c00","#3e5000","#546600","#6c8000","#8ea000",
+  "#aac000","#c2d800","#d8ec10","#e8f428","#f0f84c","#f6fc74","#fafeaa","#fdffd8",
+  // ── G8: Greens — forest → grass → mint ── 128-143
+  "#001400","#002000","#003000","#004400","#0a5c0a","#147814","#1e9020","#28a828",
+  "#38c038","#4ed84e","#68e868","#88f488","#a8f8a8","#c4fcc4","#deffde","#f0fff0",
+  // ── G9: Teals & cyans — dark teal → aqua → pale cyan ── 144-159
+  "#001414","#002020","#003030","#004444","#005858","#007070","#008c8c","#00a8a8",
+  "#00c0c0","#10d4d4","#28e4e4","#50eef0","#80f4f8","#a8f8fc","#ccfcff","#eeffff",
+  // ── G10: Blues — deep navy → electric blue → sky ── 160-175
+  "#000018","#000828","#000e40","#001460","#001e80","#0030a0","#0048c0","#0060d8",
+  "#1478ee","#2c90ff","#50aaff","#74c0ff","#96d4ff","#b8e4ff","#d4f0ff","#eef8ff",
+  // ── G11: Purples — deep indigo → vivid purple → lavender ── 176-191
+  "#0c0018","#140028","#1e0040","#2c0060","#3c0080","#5000a0","#6610c0","#8020d8",
+  "#9830ec","#b048f8","#c468ff","#d484ff","#e0a0ff","#ecc0ff","#f6dcff","#fdf0ff",
+  // ── G12: Pinks & magentas — dark rose → shock pink → pale blush ── 192-207
+  "#180010","#280018","#3c0028","#560038","#700048","#900060","#b00878","#cc1090",
+  "#e020a8","#f038bc","#f858cc","#ff76da","#ff98e4","#ffb8ee","#ffd4f6","#fff0fc",
+  // ── G13: Browns & earths — dark brown → burnt sienna → tan ── 208-223
+  "#100600","#1e0e00","#2e1400","#401c00","#582800","#703600","#884400","#a05400",
+  "#b86418","#cc7830","#dc8c48","#e8a064","#f0b47e","#f6c89a","#fcdcb8","#feeedd",
+  // ── G14: Skin tones — deepest to lightest ── 224-239
+  "#1a0a04","#2c1208","#401c0c","#5a2812","#743420","#8c4430","#a45640","#bc6a52",
+  "#cc7e64","#dc9476","#e8a888","#f0bc9e","#f6ceb4","#fadec8","#fdeedc","#fff4ee",
+  // ── G15: Fluorescents — 15 distinct neon day-glo hues ── 240-254
+  // (index 255 is reserved as EMPTY sentinel — only 15 swatches show for this group)
+  "#ff0040","#ff2000","#ff5500","#ff8800","#ffcc00","#e8ff00","#a0ff00","#44ff00",
+  "#00ff44","#00ffaa","#00ffee","#00aaff","#0055ff","#6600ff","#cc00ff",
 ];
 
 const PALETTE_RGB: [number, number, number][] = PALETTE_HEX.map((h) => {
@@ -42,7 +87,7 @@ export class PaintCanvas extends HTMLElement {
   logHeight = 64;
   scale = 8;
   tool: PaintTool = "pencil";
-  colorIndex = 8;
+  colorIndex = 72;
   brushSize = 1;
   mirrorX = false;
   shapeMode: "outline" | "fill" = "outline";
@@ -274,7 +319,7 @@ export class PaintCanvas extends HTMLElement {
       for (let dx = 0; dx < sw; dx++) {
         const val = this.stampData[dy * sw + dx];
         if (!val) continue;
-        const colorIdx = val === 1 ? this.colorIndex : 7; // 7 = PICO-8 white
+        const colorIdx = val === 1 ? this.colorIndex : 31; // 31 = pure white
         this._setPixel(cx - offX + dx, cy - offY + dy, colorIdx);
       }
     }

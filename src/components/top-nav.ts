@@ -38,10 +38,10 @@ template.innerHTML = `
       justify-content: center;
       align-items: center;
       padding: 0.75rem 1rem calc(0.85rem + env(safe-area-inset-bottom));
-      background: linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(255, 255, 255, 0.98));
-      border-top: 1px solid rgba(0, 0, 0, 0.06);
+      background: linear-gradient(180deg, var(--nav-bg-from), var(--nav-bg-to));
+      border-top: 1px solid var(--nav-border-top);
       backdrop-filter: blur(18px);
-      box-shadow: 0 -14px 30px rgba(0, 0, 0, 0.08);
+      box-shadow: var(--shadow-nav);
       z-index: 10;
     }
     .nav-button {
@@ -50,32 +50,32 @@ template.innerHTML = `
       place-items: center;
       width: 3rem;
       height: 3rem;
-      border-radius: 999px;
-      color: #0b0b0b;
-      background: #ffffff;
-      border: 1px solid rgba(0, 0, 0, 0.08);
-      box-shadow: 0 12px 22px rgba(0, 0, 0, 0.14);
+      border-radius: var(--radius-pill);
+      color: var(--text);
+      background: var(--surface-raised);
+      border: 1px solid var(--nav-btn-border);
+      box-shadow: var(--shadow-btn);
       transition: transform 150ms ease, box-shadow 150ms ease, filter 150ms ease;
     }
     .nav-button:hover {
       transform: translateY(-1px);
-      box-shadow: 0 14px 24px rgba(0, 0, 0, 0.18);
+      box-shadow: var(--shadow-btn-hover);
     }
     .nav-button:active {
       transform: translateY(0);
       filter: brightness(0.97);
     }
     .nav-button.active:not(.create) {
-      background: #0d0d0d;
-      color: #f6f6f6;
-      border-color: rgba(255, 255, 255, 0.08);
-      box-shadow: 0 12px 24px rgba(0, 0, 0, 0.3);
+      background: var(--accent);
+      color: var(--text-inverse);
+      border-color: var(--nav-active-border);
+      box-shadow: var(--shadow-btn-active);
     }
     .nav-button.create {
-      background: #0d0d0d;
-      color: #f6f6f6;
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      box-shadow: 0 12px 24px rgba(0, 0, 0, 0.3);
+      background: var(--accent);
+      color: var(--text-inverse);
+      border: 1px solid var(--nav-active-border);
+      box-shadow: var(--shadow-btn-active);
     }
     .nav-button svg {
       width: 1.25rem;

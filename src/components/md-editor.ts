@@ -7,8 +7,8 @@ template.innerHTML = `
   </div>
   <style>
     .editor-host {
-      border: 1px solid rgba(127, 127, 127, 0.35);
-      border-radius: 10px;
+      border: 1px solid var(--border-editor);
+      border-radius: var(--radius-lg);
       min-height: 280px;
     }
     .editor-content {
@@ -36,12 +36,12 @@ template.innerHTML = `
     .editor-content .ProseMirror code {
       font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
       font-size: 0.875em;
-      background: rgba(0, 0, 0, 0.06);
+      background: var(--surface-code);
       padding: 0.1em 0.35em;
       border-radius: 3px;
     }
     .editor-content .ProseMirror pre {
-      background: rgba(0, 0, 0, 0.06);
+      background: var(--surface-code);
       padding: 0.75rem 1rem;
       border-radius: 6px;
       overflow-x: auto;
@@ -52,19 +52,19 @@ template.innerHTML = `
       font-size: 0.875rem;
     }
     .editor-content .ProseMirror blockquote {
-      border-left: 3px solid rgba(0, 0, 0, 0.18);
+      border-left: 3px solid var(--border-strong);
       padding-left: 1rem;
-      color: rgba(0, 0, 0, 0.6);
+      color: var(--text-secondary);
     }
     .editor-content .ProseMirror hr {
       border: none;
-      border-top: 1px solid rgba(0, 0, 0, 0.12);
+      border-top: 1px solid var(--border-medium);
       margin: 1rem 0;
     }
     /* placeholder */
     .editor-content .ProseMirror.is-editor-empty:first-child::before {
       content: attr(data-placeholder);
-      color: rgba(0, 0, 0, 0.35);
+      color: var(--text-muted);
       pointer-events: none;
       float: left;
       height: 0;
