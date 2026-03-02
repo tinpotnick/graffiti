@@ -1,0 +1,33 @@
+# Tauri desktop dev image
+# Includes: Rust toolchain, WebKit2GTK (Tauri 2), Node 20, pnpm
+FROM rust:bookworm
+
+# ── Tauri Linux system dependencies ──────────────────────────────────────────
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libwebkit2gtk-4.1-dev \
+    libssl-dev \
+    libgtk-3-dev \
+    libayatana-appindicator3-dev \
+    librsvg2-dev \
+    patchelf \
+    file \
+    curl \
+    xdg-utils \
+    # X11 client libs so GTK can connect to the host display
+    libx11-xcb1 \
+    && rm -rf /var/lib/apt/lists/*
+
+# ── Node 20 via NodeSource ────────────────────────────────────────────────────
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && apt-get install -y nodejs \
+    && rm -rf /var/lib/apt/lists/*
+
+# ── pnpm via corepack ─────────────────────────────────────────────────────────
+RUN corepack enable
+
+# ── Ensure cargo is in PATH for login shells ──────────────────────────────────
+# Debian's /etc/profile resets PATH, removing /usr/local/cargo/bin that the
+# rust base image sets via ENV. Adding it to profile.d makes it stick.
+RUN echo 'export PATH="/usr/local/cargo/bin:$PATH"' > /etc/profile.d/cargo.sh
+
+WORKDIR /app

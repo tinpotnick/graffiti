@@ -1,9 +1,29 @@
 import { PALETTE_HEX, PaintCanvas, PaintTool } from "../components/paint-canvas";
 import { STAMP_CATEGORIES, StampDef } from "../data/stamps";
+import { publishTag, publishWallPost } from "../services/profile";
 
 type Mode = "tag" | "wall";
 
 const ICONS: Record<string, string> = {
+  undo: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/>
+  </svg>`,
+  redo: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="m15 14 5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/>
+  </svg>`,
+  trash: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/>
+    <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>
+    <line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/>
+  </svg>`,
+  download: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+    <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+  </svg>`,
+  upload: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+    <polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+  </svg>`,
   pencil: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
     <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/>
     <path d="m15 5 4 4"/>
@@ -305,24 +325,39 @@ const STYLES = `
     pointer-events: none; z-index: 1;
   }
 
-  /* ── Actions ─────────────────────────────────── */
-  .actions { display: flex; gap: 6px; }
-  .btn {
-    flex: 1; padding: 10px 6px;
-    font-family: inherit; font-size: 7px; letter-spacing: 1px;
+  /* ── Tool-btn colour variants ────────────────────────── */
+  .tool-btn.danger { color: var(--px-danger); }
+
+  /* ── Text action button (36px tall, matches tool-btn) ── */
+  .action-btn {
+    height: 36px; padding: 0 8px;
+    display: flex; align-items: center;
     cursor: pointer;
     background: var(--bg-up); color: var(--px-text);
     border: 2px solid;
     border-color: var(--bl) var(--bd) var(--bd) var(--bl);
-    text-align: center;
+    font-family: inherit; font-size: 6px; letter-spacing: 1px;
+    flex-shrink: 0; white-space: nowrap;
   }
-  .btn:active:not(:disabled) {
+  .action-btn:active:not(:disabled) {
     border-color: var(--bd) var(--bl) var(--bl) var(--bd);
     background: var(--bg-dn);
   }
-  .btn:disabled { opacity: 0.35; cursor: default; }
-  .btn.danger  { color: var(--px-danger); }
-  .btn.primary { color: var(--px-success); }
+  .action-btn:disabled { opacity: 0.35; cursor: default; }
+  .action-btn.publish  { color: var(--px-mirror); }
+
+  .publish-status {
+    margin: 0;
+    text-align: center;
+    font-family: inherit;
+    font-size: 6px;
+    letter-spacing: 1.5px;
+    min-height: 14px;
+    color: transparent;
+  }
+  .publish-status[data-state="loading"] { color: var(--px-active); }
+  .publish-status[data-state="success"] { color: var(--px-success); }
+  .publish-status[data-state="error"]   { color: var(--px-danger); }
 `;
 
 class PaintView extends HTMLElement {
@@ -427,6 +462,18 @@ class PaintView extends HTMLElement {
             <button class="shape-mode-btn" id="shape-mode-btn" data-action="shape-mode"
               title="Toggle outline / fill (T)">OUT</button>
           </div>
+          <div class="toolbar-row">
+            <span class="row-label"></span>
+            <button class="tool-btn" id="undo-btn" data-action="undo" disabled title="Undo (Ctrl+Z)">${ICONS.undo}</button>
+            <button class="tool-btn" id="redo-btn" data-action="redo" disabled title="Redo (Ctrl+Shift+Z)">${ICONS.redo}</button>
+            <div class="toolbar-divider"></div>
+            <button class="tool-btn danger" data-action="clear" title="Clear canvas">${ICONS.trash}</button>
+            <div class="toolbar-divider"></div>
+            <button class="tool-btn" data-action="import" title="Import PNG">${ICONS.upload}</button>
+            <button class="tool-btn" data-action="download" title="Export PNG">${ICONS.download}</button>
+            <div class="toolbar-divider"></div>
+            <button class="action-btn publish" id="publish-btn" data-action="publish">PUBLISH TAG</button>
+          </div>
         </div>
 
         <div class="palette-panel">
@@ -447,12 +494,8 @@ class PaintView extends HTMLElement {
 
         <div class="canvas-wrapper" id="canvas-wrap"></div>
 
-        <div class="actions">
-          <button class="btn" id="undo-btn" data-action="undo" disabled>UNDO</button>
-          <button class="btn" id="redo-btn" data-action="redo" disabled>REDO</button>
-          <button class="btn danger"  data-action="clear">CLEAR</button>
-          <button class="btn primary" data-action="download">SAVE PNG</button>
-        </div>
+        <p id="publish-status" class="publish-status"></p>
+        <input type="file" id="import-input" accept="image/png" style="display:none">
       </div>
     `;
 
@@ -646,6 +689,16 @@ class PaintView extends HTMLElement {
         return;
       }
 
+      if (t.dataset.action === "import") {
+        this._shadow.querySelector<HTMLInputElement>("#import-input")!.click();
+        return;
+      }
+
+      if (t.dataset.action === "publish") {
+        this._publishCanvas();
+        return;
+      }
+
       if (t.dataset.cat !== undefined) {
         this._selectedCat = t.dataset.cat;
         this._shadow.querySelectorAll<HTMLElement>(".stamp-cat-btn").forEach((b) => {
@@ -666,6 +719,13 @@ class PaintView extends HTMLElement {
         return;
       }
     });
+
+    this._shadow.querySelector<HTMLInputElement>("#import-input")!
+      .addEventListener("change", (e) => {
+        const file = (e.target as HTMLInputElement).files?.[0];
+        if (file) this._importPng(file);
+        (e.target as HTMLInputElement).value = "";
+      });
   }
 
   private _switchMode(next: Mode) {
@@ -676,6 +736,8 @@ class PaintView extends HTMLElement {
     this._shadow.querySelectorAll<HTMLElement>(".tab").forEach((tab) => {
       tab.classList.toggle("active", tab.dataset.mode === this._mode);
     });
+    const publishBtn = this._shadow.querySelector<HTMLButtonElement>("#publish-btn");
+    if (publishBtn) publishBtn.textContent = next === "tag" ? "PUBLISH TAG" : "POST TO WALL";
     this._mountCanvas();
   }
 
@@ -788,6 +850,93 @@ class PaintView extends HTMLElement {
       if (bytes.length !== expected) return null;
       return bytes;
     } catch { return null; }
+  }
+
+  // ── Import PNG ─────────────────────────────────────────────────────────────
+
+  private _importPng(file: File) {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      const isWall = this._mode === "wall";
+      const w = isWall ? 320 : 64;
+      const h = isWall ? 180 : 64;
+      const ec = document.createElement("canvas");
+      ec.width = w; ec.height = h;
+      const ctx = ec.getContext("2d")!;
+      ctx.drawImage(img, 0, 0, w, h);
+      const { data } = ctx.getImageData(0, 0, w, h);
+      const indices = new Uint8Array(w * h);
+      for (let i = 0; i < w * h; i++) {
+        const a = data[i * 4 + 3];
+        indices[i] = a < 128
+          ? 255 // EMPTY
+          : this._nearestPaletteIndex(data[i * 4], data[i * 4 + 1], data[i * 4 + 2]);
+      }
+      this._canvas.setPixels(indices);
+      this._saveToStorage();
+      URL.revokeObjectURL(url);
+    };
+    img.onerror = () => URL.revokeObjectURL(url);
+    img.src = url;
+  }
+
+  /** Find the closest palette entry to an RGB value using squared Euclidean distance. */
+  private _nearestPaletteIndex(r: number, g: number, b: number): number {
+    let best = 0;
+    let bestDist = Infinity;
+    for (let i = 0; i < PALETTE_HEX.length; i++) {
+      const h = PALETTE_HEX[i];
+      const pr = parseInt(h.slice(1, 3), 16);
+      const pg = parseInt(h.slice(3, 5), 16);
+      const pb = parseInt(h.slice(5, 7), 16);
+      const d = (r - pr) ** 2 + (g - pg) ** 2 + (b - pb) ** 2;
+      if (d < bestDist) { bestDist = d; best = i; }
+    }
+    return best;
+  }
+
+  // ── Publish to IPFS ────────────────────────────────────────────────────────
+
+  private async _publishCanvas() {
+    const publishBtn = this._shadow.querySelector<HTMLButtonElement>("#publish-btn");
+    const statusEl   = this._shadow.querySelector<HTMLElement>("#publish-status");
+    if (!publishBtn || publishBtn.disabled) return;
+
+    publishBtn.disabled = true;
+    if (statusEl) { statusEl.textContent = "PUBLISHING..."; statusEl.dataset.state = "loading"; }
+
+    try {
+      // Decode the data URL directly — fetch('data:...') is unreliable in WebKit2GTK.
+      const dataUrl = this._canvas.toDataURL();
+      const base64  = dataUrl.split(",")[1];
+      const binary  = atob(base64);
+      const png     = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) png[i] = binary.charCodeAt(i);
+
+      if (this._mode === "tag") {
+        await publishTag(png);
+      } else {
+        await publishWallPost(png);
+      }
+
+      if (statusEl) { statusEl.textContent = "PUBLISHED"; statusEl.dataset.state = "success"; }
+      setTimeout(() => {
+        if (statusEl) { statusEl.textContent = ""; statusEl.dataset.state = ""; }
+      }, 3000);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error("[paint-view] publish failed:", msg);
+      if (statusEl) {
+        statusEl.textContent = msg.slice(0, 60);
+        statusEl.dataset.state = "error";
+      }
+      setTimeout(() => {
+        if (statusEl) { statusEl.textContent = ""; statusEl.dataset.state = ""; }
+      }, 8000);
+    } finally {
+      publishBtn.disabled = false;
+    }
   }
 }
 
