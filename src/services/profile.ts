@@ -10,6 +10,7 @@
  */
 
 import { addBytes, addDirectory, getNodeId, publish } from './ipfs'
+import { pinCid } from './pinning'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -137,8 +138,29 @@ async function _publishDir(manifest: WallManifest, tagPng: Uint8Array): Promise<
     ...(tagPng.length > 0 ? [{ path: 'tag.png', data: tagPng }] : []),
   ]
   const dirCid = await addDirectory(entries)
-  // IPNS publish is slow (DHT propagation); fire-and-forget so the UI isn't blocked.
-  // The content is already pinned locally and reachable by CID immediately.
+  // Both are fire-and-forget — content is locally accessible by CID immediately.
   publish(dirCid).catch(e => console.warn('[profile] IPNS publish failed:', e))
+  pinCid(dirCid, 'graffiti-manifest').catch(e => console.warn('[profile] Pinata pin failed:', e))
   return dirCid
+}
+
+// ── Follow management ─────────────────────────────────────────────────────────
+
+/** Add a peer to the following list and persist locally (re-publishes to IPNS in background). */
+export async function followPeer(peerId: string): Promise<void> {
+  const manifest = loadManifest()
+  if (manifest.following.includes(peerId)) return
+  manifest.following = [...manifest.following, peerId]
+  manifest.updatedAt = Date.now()
+  _saveManifest(manifest)
+  const tagPng = _getCachedTagPng() ?? new Uint8Array(0)
+  _publishDir(manifest, tagPng).catch(e => console.warn('[profile] republish after follow failed:', e))
+}
+
+/** Remove a peer from the following list and persist locally. */
+export function unfollowPeer(peerId: string): void {
+  const manifest = loadManifest()
+  manifest.following = manifest.following.filter(id => id !== peerId)
+  manifest.updatedAt = Date.now()
+  _saveManifest(manifest)
 }

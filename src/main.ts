@@ -7,6 +7,7 @@ import { defineHomeView } from "./views/home-view";
 import { defineCreateView } from "./views/create-view";
 import { definePaintCanvas } from "./components/paint-canvas";
 import { definePaintView } from "./views/paint-view";
+import { defineAccountView } from "./views/account-view";
 
 defineTopNav();
 defineFeedItem();
@@ -15,4 +16,5 @@ defineHomeView();
 defineCreateView();
 definePaintCanvas();
 definePaintView();
+defineAccountView();
 defineAppShell();

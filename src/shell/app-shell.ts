@@ -1,6 +1,6 @@
-import { startDaemon } from "../services/ipfs";
+import { initHelia } from "../services/ipfs";
 
-type ViewTag = "view-home" | "view-create" | "view-paint";
+type ViewTag = "view-home" | "view-create" | "view-paint" | "view-account";
 
 const template = document.createElement("template");
 template.innerHTML = `
@@ -66,14 +66,7 @@ class AppShell extends HTMLElement {
   }
 
   private async _boot() {
-    // Start the Kubo daemon. In browser dev mode invoke() throws — that is expected.
-    try {
-      await startDaemon();
-    } catch (err) {
-      // Expected in browser dev mode. Log so it's visible in Tauri DevTools if it
-      // fails for any other reason (e.g. Kubo binary not found).
-      console.warn("[app-shell] IPFS daemon not started:", err);
-    }
+    await initHelia();
     this.renderRoute(window.location.pathname);
   }
 
@@ -105,6 +98,8 @@ class AppShell extends HTMLElement {
         return "view-create";
       case "/paint":
         return "view-paint";
+      case "/account":
+        return "view-account";
       default:
         return "view-home";
     }

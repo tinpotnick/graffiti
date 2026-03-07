@@ -26,6 +26,12 @@ template.innerHTML = `
         <path d="M12 5.25v13.5M5.25 12h13.5" />
       </svg>
     </a>
+    <a class="nav-button" href="/account" aria-label="Account">
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <circle cx="12" cy="8" r="4" />
+        <path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" stroke-linecap="round"/>
+      </svg>
+    </a>
   </nav>
   <style>
     .bottom-nav {

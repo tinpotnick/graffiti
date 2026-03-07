@@ -1,88 +1,100 @@
 /**
- * IPFS service — thin wrapper around the Kubo HTTP API (localhost:5001).
+ * IPFS service — Helia in-process node (no daemon required).
  *
- * Lifecycle (start/stop/status) goes via Tauri commands so Rust can own the
- * daemon process.  All content operations call the Kubo API directly from the
- * frontend — there is no need to pipe binary data through Tauri IPC.
+ * Content operations (add/cat) run locally against an IndexedDB blockstore.
+ * The blockstore and datastore are IDB-backed so the node's identity (PeerID)
+ * is stable across app restarts.
+ *
+ * Remote persistence: handled by the pinning service (Pinata).
+ * IPNS publishing: stubbed — content is accessible by CID via Pinata.
+ *   Full IPNS support (delegated routing) is deferred pending ecosystem stability.
  */
 
-import { invoke } from '@tauri-apps/api/core'
+import { createHelia, type Helia } from 'helia'
+import { unixfs } from '@helia/unixfs'
+import { IDBBlockstore } from 'blockstore-idb'
+import { IDBDatastore } from 'datastore-idb'
+import { CID } from 'multiformats/cid'
 
-const API = 'http://127.0.0.1:5001/api/v0'
+// ── Singleton ──────────────────────────────────────────────────────────────────
 
-// ── Lifecycle ─────────────────────────────────────────────────────────────────
+let _helia: Helia | null = null
+let _fs: ReturnType<typeof unixfs> | null = null
 
-/** Start the Kubo daemon (init repo on first run, configure CORS, wait ready). */
-export function startDaemon(): Promise<void> {
-  return invoke('ipfs_start')
+/** Initialise Helia with persistent IDB stores. Safe to call multiple times. */
+export async function initHelia(): Promise<void> {
+  if (_helia) return
+
+  const blockstore = new IDBBlockstore('graffiti-blocks')
+  const datastore = new IDBDatastore('graffiti-data')
+  await blockstore.open()
+  await datastore.open()
+
+  _helia = await createHelia({ blockstore, datastore })
+  _fs = unixfs(_helia)
 }
 
-/** Stop the Kubo daemon. */
-export function stopDaemon(): Promise<void> {
-  return invoke('ipfs_stop')
+async function _getHelia(): Promise<Helia> {
+  if (!_helia) await initHelia()
+  return _helia!
 }
 
-/** True if the daemon process is currently running. */
-export function isDaemonRunning(): Promise<boolean> {
-  return invoke<boolean>('ipfs_status')
+async function _getFs(): Promise<ReturnType<typeof unixfs>> {
+  if (!_fs) await initHelia()
+  return _fs!
 }
 
-// ── Identity ──────────────────────────────────────────────────────────────────
+// ── Identity ───────────────────────────────────────────────────────────────────
 
 export interface NodeId {
-  /** PeerID — also the user's permanent IPNS name. */
+  /** PeerID — the user's permanent identity / IPNS name. */
   id: string
   publicKey: string
   addresses: string[]
   agentVersion: string
 }
 
-/** Get the local node's identity. Call after startDaemon() resolves. */
 export async function getNodeId(): Promise<NodeId> {
-  const res = await fetch(`${API}/id`, { method: 'POST' })
-  const j = await res.json()
+  const h = await _getHelia()
   return {
-    id: j.ID,
-    publicKey: j.PublicKey,
-    addresses: j.Addresses ?? [],
-    agentVersion: j.AgentVersion,
+    id: h.libp2p.peerId.toString(),
+    publicKey: '',
+    addresses: h.libp2p.getMultiaddrs().map(a => a.toString()),
+    agentVersion: 'helia',
   }
 }
 
-// ── Add content ───────────────────────────────────────────────────────────────
+// ── Add content ────────────────────────────────────────────────────────────────
 
-/** Add raw bytes to IPFS and pin locally. Returns CID. */
+/** Add raw bytes to the local blockstore. Returns CID string. */
 export async function addBytes(data: Uint8Array): Promise<string> {
-  const form = new FormData()
-  form.append('file', new Blob([data]))
-  const res = await fetch(`${API}/add?pin=true&quieter=true`, {
-    method: 'POST',
-    body: form,
-  })
-  const j = await res.json()
-  return j.Hash as string
+  const fs = await _getFs()
+  const cid = await fs.addBytes(data)
+  return cid.toString()
 }
 
-/** Serialise an object to JSON and add it to IPFS. Returns CID. */
+/** Serialise an object to JSON and add it. Returns CID string. */
 export async function addJson(obj: unknown): Promise<string> {
   return addBytes(new TextEncoder().encode(JSON.stringify(obj)))
 }
 
-/** Add a named file to IPFS (name is metadata only, not part of the CID). */
-export async function addFile(name: string, data: Uint8Array): Promise<string> {
-  const form = new FormData()
-  form.append('file', new Blob([data]), name)
-  const res = await fetch(`${API}/add?pin=true`, { method: 'POST', body: form })
-  const j = await res.json()
-  return j.Hash as string
-}
-
-// ── Read content ──────────────────────────────────────────────────────────────
+// ── Read content ───────────────────────────────────────────────────────────────
 
 /** Fetch raw bytes for a CID. */
 export async function catBytes(cid: string): Promise<Uint8Array> {
-  const res = await fetch(`${API}/cat?arg=${cid}`, { method: 'POST' })
-  return new Uint8Array(await res.arrayBuffer())
+  const fs = await _getFs()
+  const chunks: Uint8Array[] = []
+  for await (const chunk of fs.cat(CID.parse(cid))) {
+    chunks.push(chunk)
+  }
+  const total = chunks.reduce((n, c) => n + c.length, 0)
+  const out = new Uint8Array(total)
+  let offset = 0
+  for (const chunk of chunks) {
+    out.set(chunk, offset)
+    offset += chunk.length
+  }
+  return out
 }
 
 /** Fetch and JSON-parse a CID. */
@@ -91,65 +103,53 @@ export async function catJson<T>(cid: string): Promise<T> {
   return JSON.parse(new TextDecoder().decode(bytes)) as T
 }
 
-// ── Directories ───────────────────────────────────────────────────────────────
+// ── Directories ────────────────────────────────────────────────────────────────
 
 export interface DirEntry {
-  /** Relative path within the directory, e.g. "wall/1709123456.png" */
+  /** Relative path within the directory, e.g. "manifest.json" */
   path: string
   data: Uint8Array
 }
 
 /**
  * Add multiple files as a wrapped UnixFS directory.
- * Returns the root directory CID.
- *
- * The response is NDJSON; the entry with Name === '' is the root.
+ * Returns the root directory CID string.
  */
 export async function addDirectory(entries: DirEntry[]): Promise<string> {
-  const form = new FormData()
-  for (const { path, data } of entries) {
-    form.append('file', new Blob([data]), path)
+  const fs = await _getFs()
+  const source = entries.map(({ path, data }) => ({ path, content: data }))
+  let rootCid: CID | undefined
+  for await (const result of fs.addAll(source, { wrapWithDirectory: true })) {
+    if (result.path === '') rootCid = result.cid
   }
-  const res = await fetch(`${API}/add?pin=true&wrap-with-directory=true`, {
-    method: 'POST',
-    body: form,
-  })
-  const lines = (await res.text())
-    .trim()
-    .split('\n')
-    .map((l) => JSON.parse(l) as { Name: string; Hash: string })
-  const root = lines.find((l) => l.Name === '')
-  if (!root) throw new Error('addDirectory: could not find root CID in response')
-  return root.Hash
+  if (!rootCid) throw new Error('addDirectory: no root entry in result')
+  return rootCid.toString()
 }
 
-// ── IPNS ──────────────────────────────────────────────────────────────────────
+// ── IPNS ───────────────────────────────────────────────────────────────────────
 
 /**
- * Publish a CID to the node's default IPNS key.
- * `allow-offline=true` returns immediately without waiting for DHT propagation.
- * Returns the IPNS name (same as the node's PeerID).
+ * Publish a CID under this node's IPNS name.
+ * Currently a stub — content is accessible by CID via Pinata pinning.
+ * Returns the PeerID (which is the IPNS name once full publishing is wired up).
  */
 export async function publish(cid: string): Promise<string> {
-  const res = await fetch(
-    `${API}/name/publish?arg=/ipfs/${cid}&allow-offline=true&quieter=true`,
-    { method: 'POST' },
-  )
-  const j = await res.json()
-  return j.Name as string
+  const h = await _getHelia()
+  console.info('[ipfs] IPNS publish deferred — content at CID', cid)
+  return h.libp2p.peerId.toString()
 }
 
 /**
- * Resolve an IPNS name to a /ipfs/<CID> path.
- * Pass just the PeerID — the /ipns/ prefix is added automatically.
+ * Resolve an IPNS name (PeerID) to a /ipfs/<CID> path via public gateway.
  */
 export async function resolve(peerId: string): Promise<string> {
-  const res = await fetch(
-    `${API}/name/resolve?arg=/ipns/${peerId}&recursive=true`,
-    { method: 'POST' },
-  )
-  const j = await res.json()
-  return j.Path as string // "/ipfs/bafy..."
+  const res = await fetch(`https://dweb.link/ipns/${peerId}`, {
+    redirect: 'follow',
+    headers: { Accept: 'text/plain' },
+  })
+  if (!res.ok) throw new Error(`IPNS resolve failed: ${res.status}`)
+  // Gateway redirects to /ipfs/<cid>
+  return new URL(res.url).pathname
 }
 
 /** Strip the /ipfs/ prefix from a resolved IPNS path to get a bare CID. */

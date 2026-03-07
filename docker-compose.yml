@@ -65,6 +65,19 @@ services:
       # Build artefacts — bind-mounted so the binary is accessible on the host.
       - ./.docker-cache/tauri_target:/app/src-tauri/target:z
 
+  # ── Local IPFS node (dev/test only) ──────────────────────────────────────────
+  # Not required to run the app. Use for inspecting published CIDs and system tests.
+  # CLI: docker compose exec ipfs-dev ipfs cat <cid>
+  ipfs-dev:
+    image: ipfs/kubo:v0.33.0
+    ports:
+      - "5001:5001"   # API
+      - "8080:8080"   # Gateway
+      - "4001:4001"   # Swarm
+    volumes:
+      - ipfs-dev-data:/data/ipfs
+
 volumes:
   node_modules:
   pnpm_store:
+  ipfs-dev-data:
