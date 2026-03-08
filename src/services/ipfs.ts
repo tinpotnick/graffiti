@@ -21,6 +21,7 @@ import { IDBBlockstore } from 'blockstore-idb'
 import { IDBDatastore } from 'datastore-idb'
 import { CID } from 'multiformats/cid'
 import { peerIdFromString } from '@libp2p/peer-id'
+import { getPinataGateway } from './pinning'
 
 // ── Singleton ──────────────────────────────────────────────────────────────────
 
@@ -106,12 +107,18 @@ export async function addJson(obj: unknown): Promise<string> {
 
 // ── Read content ───────────────────────────────────────────────────────────────
 
-// Public IPFS gateways for fallback when Helia's bitswap/delegated routing fails
-const GATEWAYS = [
+// Public IPFS gateways for fallback when Helia's bitswap/delegated routing fails.
+const PUBLIC_GATEWAYS = [
   'https://ipfs.io/ipfs',
   'https://dweb.link/ipfs',
-  'https://cloudflare-ipfs.com/ipfs',
 ]
+
+/** Build gateway list — Pinata dedicated gateway first (if configured), then public. */
+function _getGateways(): string[] {
+  const pinata = getPinataGateway()
+  if (pinata) return [`${pinata}/ipfs`, ...PUBLIC_GATEWAYS]
+  return PUBLIC_GATEWAYS
+}
 
 /**
  * Fetch raw bytes for a CID, optionally resolving a path within a UnixFS directory.
@@ -134,10 +141,8 @@ export async function catBytes(cid: string, path?: string): Promise<Uint8Array> 
   }
 
   // Gateway fallback — try each until one succeeds
-  // Use format=raw for direct CID fetches (avoids HTML directory listings);
-  // omit it for path-based fetches so the gateway traverses the directory.
-  const suffix = path ? `/${cid}/${path}` : `/${cid}?format=raw`
-  for (const gw of GATEWAYS) {
+  const suffix = path ? `/${cid}/${path}` : `/${cid}`
+  for (const gw of _getGateways()) {
     try {
       const res = await fetch(`${gw}${suffix}`, { signal: AbortSignal.timeout(30_000) })
       if (res.ok) {

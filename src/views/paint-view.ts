@@ -1,4 +1,4 @@
-import { PALETTE_HEX, PaintCanvas, PaintTool } from "../components/paint-canvas";
+import { PALETTE_HEX, PALETTE_RGB, EMPTY, PaintCanvas, PaintTool } from "../components/paint-canvas";
 import { STAMP_CATEGORIES, StampDef } from "../data/stamps";
 import { publishTag, publishWallPost } from "../services/profile";
 
@@ -898,26 +898,100 @@ class PaintView extends HTMLElement {
 
   // ── Publish to IPFS ────────────────────────────────────────────────────────
 
+  /**
+   * Compute the bounding box of non-empty pixels.
+   * Returns null if the canvas is completely empty.
+   */
+  private _getBounds(pixels: Uint8Array, w: number, h: number, pad: number):
+    { x: number; y: number; w: number; h: number } | null {
+    let minX = w, minY = h, maxX = -1, maxY = -1;
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        if (pixels[y * w + x] !== EMPTY) {
+          if (x < minX) minX = x;
+          if (x > maxX) maxX = x;
+          if (y < minY) minY = y;
+          if (y > maxY) maxY = y;
+        }
+      }
+    }
+    if (maxX < 0) return null; // completely empty
+    // Apply padding, clamped to canvas bounds
+    minX = Math.max(0, minX - pad);
+    minY = Math.max(0, minY - pad);
+    maxX = Math.min(w - 1, maxX + pad);
+    maxY = Math.min(h - 1, maxY + pad);
+    return { x: minX, y: minY, w: maxX - minX + 1, h: maxY - minY + 1 };
+  }
+
+  /** Export a cropped region of the palette-index pixel array as a PNG Uint8Array. */
+  private _cropToPng(
+    pixels: Uint8Array, canvasW: number,
+    bounds: { x: number; y: number; w: number; h: number },
+  ): Uint8Array {
+    const { x: bx, y: by, w: bw, h: bh } = bounds;
+    const ec = document.createElement("canvas");
+    ec.width = bw; ec.height = bh;
+    const ctx = ec.getContext("2d")!;
+    const img = ctx.createImageData(bw, bh);
+    const d = img.data;
+    for (let row = 0; row < bh; row++) {
+      for (let col = 0; col < bw; col++) {
+        const idx = pixels[(by + row) * canvasW + (bx + col)];
+        const di = (row * bw + col) * 4;
+        if (idx === EMPTY) {
+          d[di + 3] = 0;
+        } else {
+          const [r, g, b] = PALETTE_RGB[idx];
+          d[di] = r; d[di + 1] = g; d[di + 2] = b; d[di + 3] = 255;
+        }
+      }
+    }
+    ctx.putImageData(img, 0, 0);
+    const dataUrl = ec.toDataURL("image/png");
+    const base64 = dataUrl.split(",")[1];
+    const binary = atob(base64);
+    const png = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) png[i] = binary.charCodeAt(i);
+    return png;
+  }
+
   private async _publishCanvas() {
     const publishBtn = this._shadow.querySelector<HTMLButtonElement>("#publish-btn");
     const statusEl   = this._shadow.querySelector<HTMLElement>("#publish-status");
     if (!publishBtn || publishBtn.disabled) return;
 
+    // For wall mode, check for empty canvas before publishing
+    if (this._mode === "wall") {
+      const pixels = this._canvas.getPixels();
+      const bounds = this._getBounds(pixels, 320, 180, 4);
+      if (!bounds) {
+        if (statusEl) { statusEl.textContent = "NOTHING TO POST"; statusEl.dataset.state = "error"; }
+        setTimeout(() => {
+          if (statusEl) { statusEl.textContent = ""; statusEl.dataset.state = ""; }
+        }, 3000);
+        return;
+      }
+    }
+
     publishBtn.disabled = true;
     if (statusEl) { statusEl.textContent = "PUBLISHING..."; statusEl.dataset.state = "loading"; }
 
     try {
-      // Decode the data URL directly — fetch('data:...') is unreliable in WebKit2GTK.
-      const dataUrl = this._canvas.toDataURL();
-      const base64  = dataUrl.split(",")[1];
-      const binary  = atob(base64);
-      const png     = new Uint8Array(binary.length);
-      for (let i = 0; i < binary.length; i++) png[i] = binary.charCodeAt(i);
-
       if (this._mode === "tag") {
+        // Tag: export full 64×64 PNG as before
+        const dataUrl = this._canvas.toDataURL();
+        const base64  = dataUrl.split(",")[1];
+        const binary  = atob(base64);
+        const png     = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) png[i] = binary.charCodeAt(i);
         await publishTag(png);
       } else {
-        await publishWallPost(png);
+        // Wall: crop to content bounding box
+        const pixels = this._canvas.getPixels();
+        const bounds = this._getBounds(pixels, 320, 180, 4)!;
+        const png = this._cropToPng(pixels, 320, bounds);
+        await publishWallPost(png, "", bounds);
       }
 
       if (statusEl) { statusEl.textContent = "PUBLISHED"; statusEl.dataset.state = "success"; }

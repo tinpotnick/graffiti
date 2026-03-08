@@ -19,6 +19,14 @@ export interface WallPost {
   cid: string
   timestamp: number
   caption: string
+  /** Top-left X of the cropped image on the 320×180 wall */
+  x?: number
+  /** Top-left Y of the cropped image on the 320×180 wall */
+  y?: number
+  /** Width of the cropped image */
+  w?: number
+  /** Height of the cropped image */
+  h?: number
 }
 
 export interface WallManifest {
@@ -101,7 +109,7 @@ export async function getMyPeerId(): Promise<string> {
 export async function publishTag(png: Uint8Array): Promise<string> {
   const tagCid = await addBytes(png)
   _cacheTagPng(png)
-  pinFile(png, `tag-${tagCid.slice(-8)}.png`).catch(e => console.warn('[profile] tag pin failed:', e))
+  pinFile(png, `tag-${tagCid.slice(-8)}.png`, tagCid).catch(e => console.warn('[profile] tag pin failed:', e))
 
   const manifest = loadManifest()
   manifest.tag = tagCid
@@ -117,12 +125,23 @@ export async function publishTag(png: Uint8Array): Promise<string> {
  * Prepends the post to wall[] (newest first) and re-publishes the manifest.
  * Returns the manifest CID.
  */
-export async function publishWallPost(png: Uint8Array, caption = ''): Promise<string> {
+export async function publishWallPost(
+  png: Uint8Array,
+  caption = '',
+  bounds?: { x: number; y: number; w: number; h: number },
+): Promise<string> {
   const postCid = await addBytes(png)
-  pinFile(png, `wall-${postCid.slice(-8)}.png`).catch(e => console.warn('[profile] wall post pin failed:', e))
+  pinFile(png, `wall-${postCid.slice(-8)}.png`, postCid).catch(e => console.warn('[profile] wall post pin failed:', e))
 
   const manifest = loadManifest()
-  manifest.wall = [{ cid: postCid, timestamp: Date.now(), caption }, ...manifest.wall]
+  const post: WallPost = { cid: postCid, timestamp: Date.now(), caption }
+  if (bounds) {
+    post.x = bounds.x
+    post.y = bounds.y
+    post.w = bounds.w
+    post.h = bounds.h
+  }
+  manifest.wall = [post, ...manifest.wall]
   manifest.updatedAt = Date.now()
 
   const manifestCid = await _publishManifest(manifest)
@@ -136,7 +155,7 @@ async function _publishManifest(manifest: WallManifest): Promise<string> {
   const manifestBytes = new TextEncoder().encode(JSON.stringify(manifest, null, 2))
   const manifestCid = await addBytes(manifestBytes)
   // Pin manifest + publish to IPNS — both fire-and-forget
-  pinFile(manifestBytes, 'manifest.json').catch(e => console.warn('[profile] manifest pin failed:', e))
+  pinFile(manifestBytes, 'manifest.json', manifestCid).catch(e => console.warn('[profile] manifest pin failed:', e))
   publish(manifestCid).catch(e => console.warn('[profile] IPNS publish failed:', e))
   return manifestCid
 }

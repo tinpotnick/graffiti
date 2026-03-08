@@ -50,7 +50,7 @@ export const PALETTE_HEX: string[] = [
   "#00ff44","#00ffaa","#00ffee","#00aaff","#0055ff","#6600ff","#cc00ff",
 ];
 
-const PALETTE_RGB: [number, number, number][] = PALETTE_HEX.map((h) => {
+export const PALETTE_RGB: [number, number, number][] = PALETTE_HEX.map((h) => {
   const n = parseInt(h.slice(1), 16);
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
 });
@@ -59,7 +59,7 @@ export type PaintTool =
   | "pencil" | "eraser" | "fill" | "eyedropper" | "spray" | "stamp"
   | "line" | "rect" | "ellipse" | "arc";
 
-const EMPTY = 255;
+export const EMPTY = 255;
 const MAX_HISTORY = 50;
 
 const SHAPE_TOOLS = new Set<PaintTool>(["line", "rect", "ellipse"]);

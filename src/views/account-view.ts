@@ -1,7 +1,7 @@
 import QRCode from 'qrcode'
 import jsQR from 'jsqr'
 import { getMyPeerId, loadManifest, followPeer, unfollowPeer } from '../services/profile'
-import { hasPinataJwt, setPinataJwt, clearPinataJwt } from '../services/pinning'
+import { hasPinataJwt, setPinataJwt, clearPinataJwt, getPinataGateway, setPinataGateway, clearPinataGateway } from '../services/pinning'
 
 const STYLES = `
   :host {
@@ -361,6 +361,16 @@ class AccountView extends HTMLElement {
             <span class="pin-badge" id="pin-badge"></span>
           </div>
           <p class="status" id="jwt-status"></p>
+
+          <input class="jwt-input" id="gw-input" type="text"
+            placeholder="Pinata gateway (e.g. https://mygateway.mypinata.cloud)…" autocomplete="off" spellcheck="false"
+            style="margin-top: 1rem">
+          <div class="settings-row">
+            <button class="btn btn-primary" id="gw-save-btn">SAVE</button>
+            <button class="btn" id="gw-clear-btn">CLEAR</button>
+            <span class="pin-badge" id="gw-badge"></span>
+          </div>
+          <p class="status" id="gw-status"></p>
         </section>
       </div>
     `
@@ -542,6 +552,42 @@ class AccountView extends HTMLElement {
       updateBadge()
       this._setStatus(status, 'info', 'JWT cleared.')
       setTimeout(() => this._setStatus(status, '', ''), 3000)
+    })
+
+    // ── Gateway URL ──
+    const gwInput  = this._root.querySelector<HTMLInputElement>('#gw-input')!
+    const gwSave   = this._root.querySelector<HTMLButtonElement>('#gw-save-btn')!
+    const gwClear  = this._root.querySelector<HTMLButtonElement>('#gw-clear-btn')!
+    const gwBadge  = this._root.querySelector<HTMLElement>('#gw-badge')!
+    const gwStatus = this._root.querySelector<HTMLElement>('#gw-status')!
+
+    const updateGwBadge = () => {
+      if (getPinataGateway()) {
+        gwBadge.textContent = 'GATEWAY ON'
+        gwBadge.className = 'pin-badge ok'
+      } else {
+        gwBadge.textContent = 'NO GATEWAY'
+        gwBadge.className = 'pin-badge warn'
+      }
+    }
+    updateGwBadge()
+
+    gwSave.addEventListener('click', () => {
+      const val = gwInput.value.trim()
+      if (!val) { this._setStatus(gwStatus, 'error', 'Paste your gateway URL first.'); return }
+      setPinataGateway(val)
+      gwInput.value = ''
+      updateGwBadge()
+      this._setStatus(gwStatus, 'ok', 'Gateway saved.')
+      setTimeout(() => this._setStatus(gwStatus, '', ''), 3000)
+    })
+
+    gwClear.addEventListener('click', () => {
+      clearPinataGateway()
+      gwInput.value = ''
+      updateGwBadge()
+      this._setStatus(gwStatus, 'info', 'Gateway cleared.')
+      setTimeout(() => this._setStatus(gwStatus, '', ''), 3000)
     })
   }
 
