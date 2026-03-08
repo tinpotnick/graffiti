@@ -27,6 +27,10 @@ export interface WallPost {
   w?: number
   /** Height of the cropped image */
   h?: number
+  /** CID of the original wall image this is a tag/delta on. Undefined for original walls. */
+  wallRef?: string
+  /** Bounds of the original wall image on the 320×180 canvas. */
+  wallBounds?: { x: number; y: number; w: number; h: number }
 }
 
 export interface WallManifest {
@@ -129,6 +133,7 @@ export async function publishWallPost(
   png: Uint8Array,
   caption = '',
   bounds?: { x: number; y: number; w: number; h: number },
+  wallRef?: { cid: string; bounds: { x: number; y: number; w: number; h: number } },
 ): Promise<string> {
   const postCid = await addBytes(png)
   pinFile(png, `wall-${postCid.slice(-8)}.png`, postCid).catch(e => console.warn('[profile] wall post pin failed:', e))
@@ -140,6 +145,10 @@ export async function publishWallPost(
     post.y = bounds.y
     post.w = bounds.w
     post.h = bounds.h
+  }
+  if (wallRef) {
+    post.wallRef = wallRef.cid
+    post.wallBounds = wallRef.bounds
   }
   manifest.wall = [post, ...manifest.wall]
   manifest.updatedAt = Date.now()

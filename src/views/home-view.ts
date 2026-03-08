@@ -52,6 +52,9 @@ class HomeView extends HTMLElement {
         timestamp: p.timestamp,
         peerId: myPeerId,
         tagCid: manifest.tag,
+        bounds: p.x != null ? { x: p.x, y: p.y!, w: p.w!, h: p.h! } : undefined,
+        wallRef: p.wallRef,
+        wallBounds: p.wallBounds,
       }))
 
       // Resolve followed peers in parallel
@@ -65,6 +68,9 @@ class HomeView extends HTMLElement {
             timestamp: p.timestamp,
             peerId,
             tagCid: peerManifest.tag,
+            bounds: p.x != null ? { x: p.x, y: p.y!, w: p.w!, h: p.h! } : undefined,
+            wallRef: p.wallRef,
+            wallBounds: p.wallBounds,
           }))
         })
       )

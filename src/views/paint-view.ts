@@ -1,5 +1,6 @@
 import { PALETTE_HEX, PALETTE_RGB, EMPTY, PaintCanvas, PaintTool } from "../components/paint-canvas";
 import { publishTag, publishWallPost } from "../services/profile";
+import { catBytes } from "../services/ipfs";
 
 type Mode = "tag" | "wall";
 
@@ -360,6 +361,8 @@ class PaintView extends HTMLElement {
   private _signActive = false;
   private _tagState: Uint8Array | null = null;
   private _wallState: Uint8Array | null = null;
+  // Tag-someone's-wall mode (set from URL params)
+  private _wallRef: { cid: string; bounds: { x: number; y: number; w: number; h: number } } | null = null;
 
   private _keyDown = (e: KeyboardEvent) => {
     if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
@@ -392,10 +395,27 @@ class PaintView extends HTMLElement {
   connectedCallback() {
     if (this.shadowRoot) return;
     try {
+      // Parse wallRef from URL for "tag someone's wall" mode
+      const params = new URLSearchParams(window.location.search);
+      const wallRefCid = params.get("wallRef");
+      if (wallRefCid) {
+        const wx = parseInt(params.get("wx") ?? "0");
+        const wy = parseInt(params.get("wy") ?? "0");
+        const ww = parseInt(params.get("ww") ?? "320");
+        const wh = parseInt(params.get("wh") ?? "180");
+        this._wallRef = { cid: wallRefCid, bounds: { x: wx, y: wy, w: ww, h: wh } };
+        this._mode = "wall"; // force wall mode
+      }
+
       this._shadow = this.attachShadow({ mode: "open" });
       this._buildShell();
       this._mountCanvas();
       this._bindEvents();
+
+      // Load wall background for tag mode
+      if (this._wallRef) {
+        this._loadWallBackground();
+      }
     } catch (err) {
       console.error("[paint-view] connectedCallback failed:", err);
     }
@@ -419,12 +439,12 @@ class PaintView extends HTMLElement {
     this._shadow.innerHTML = `
       <style>${STYLES}</style>
       <div class="view">
-        <div class="mode-row">
+        <div class="mode-row"${this._wallRef ? ' style="display:none"' : ''}>
           <div class="mode-tabs">
-            <button class="tab active" data-mode="tag">MY TAG</button>
-            <button class="tab" data-mode="wall">THE WALL</button>
+            <button class="tab${this._mode === 'tag' ? ' active' : ''}" data-mode="tag">MY TAG</button>
+            <button class="tab${this._mode === 'wall' ? ' active' : ''}" data-mode="wall">THE WALL</button>
           </div>
-          <span class="dims-badge" id="dims">64×64</span>
+          <span class="dims-badge" id="dims">${this._wallRef ? '320×180' : '64×64'}</span>
         </div>
 
         <div class="toolbar">
@@ -458,7 +478,7 @@ class PaintView extends HTMLElement {
             <button class="tool-btn" data-action="import" title="Import PNG">${ICONS.upload}</button>
             <button class="tool-btn" data-action="download" title="Export PNG">${ICONS.download}</button>
             <div class="toolbar-divider"></div>
-            <button class="action-btn publish" id="publish-btn" data-action="publish">PUBLISH TAG</button>
+            <button class="action-btn publish" id="publish-btn" data-action="publish">${this._wallRef ? 'TAG THIS WALL' : this._mode === 'tag' ? 'PUBLISH TAG' : 'POST TO WALL'}</button>
           </div>
         </div>
 
@@ -648,12 +668,15 @@ class PaintView extends HTMLElement {
       this._saveToStorage();
     });
 
-    const inMemory = this._mode === "tag" ? this._tagState : this._wallState;
-    if (inMemory) {
-      this._canvas.setPixels(inMemory);
-    } else {
-      const fromStorage = this._loadFromStorage(this._mode);
-      if (fromStorage) this._canvas.setPixels(fromStorage);
+    // In tag mode, start with blank canvas (delta only). Otherwise load saved state.
+    if (!this._wallRef) {
+      const inMemory = this._mode === "tag" ? this._tagState : this._wallState;
+      if (inMemory) {
+        this._canvas.setPixels(inMemory);
+      } else {
+        const fromStorage = this._loadFromStorage(this._mode);
+        if (fromStorage) this._canvas.setPixels(fromStorage);
+      }
     }
 
     const dimsEl = this._shadow.querySelector<HTMLElement>("#dims");
@@ -740,7 +763,7 @@ class PaintView extends HTMLElement {
   }
 
   private _switchMode(next: Mode) {
-    if (next === this._mode) return;
+    if (next === this._mode || this._wallRef) return;
     if (this._mode === "tag") this._tagState = this._canvas.getPixels();
     else this._wallState = this._canvas.getPixels();
     this._mode = next;
@@ -829,9 +852,48 @@ class PaintView extends HTMLElement {
     if (btn) btn.classList.toggle("active", this._signActive);
   }
 
+  // ── Wall background for tag mode ─────────────────────
+
+  /** Fetch the original wall PNG and set it as the canvas background. */
+  private async _loadWallBackground() {
+    if (!this._wallRef) return;
+    const statusEl = this._shadow.querySelector<HTMLElement>("#publish-status");
+    if (statusEl) { statusEl.textContent = "LOADING WALL…"; statusEl.dataset.state = "loading"; }
+
+    try {
+      const pngBytes = await catBytes(this._wallRef.cid);
+      // Decode PNG into ImageData, place at bounds on a 320×180 canvas
+      const blob = new Blob([pngBytes.buffer as ArrayBuffer], { type: "image/png" });
+      const url = URL.createObjectURL(blob);
+      const img = new Image();
+      await new Promise<void>((resolve, reject) => {
+        img.onload = () => resolve();
+        img.onerror = () => reject(new Error("Failed to decode wall image"));
+        img.src = url;
+      });
+
+      const oc = document.createElement("canvas");
+      oc.width = 320; oc.height = 180;
+      const ctx = oc.getContext("2d")!;
+      const { x, y, w, h } = this._wallRef.bounds;
+      ctx.drawImage(img, x, y, w, h);
+      URL.revokeObjectURL(url);
+
+      const imageData = ctx.getImageData(0, 0, 320, 180);
+      this._canvas.setBackgroundImage(new Uint8Array(imageData.data.buffer));
+
+      if (statusEl) { statusEl.textContent = ""; statusEl.dataset.state = ""; }
+    } catch (err) {
+      console.error("[paint-view] Failed to load wall background:", err);
+      if (statusEl) { statusEl.textContent = "WALL LOAD FAILED"; statusEl.dataset.state = "error"; }
+    }
+  }
+
   // ── LocalStorage ──────────────────────────────────────
 
   private _saveToStorage() {
+    // Don't persist wall drafts in tag mode — it's a one-off session
+    if (this._wallRef) return;
     const key = this._mode === "tag" ? "graffiti:tag-pixels" : "graffiti:wall-pixels";
     try {
       const pixels = this._canvas.getPixels();
@@ -994,7 +1056,7 @@ class PaintView extends HTMLElement {
         const pixels = this._canvas.getPixels();
         const bounds = this._getBounds(pixels, 320, 180, 4)!;
         const png = this._cropToPng(pixels, 320, bounds);
-        await publishWallPost(png, "", bounds);
+        await publishWallPost(png, "", bounds, this._wallRef ?? undefined);
       }
 
       if (statusEl) { statusEl.textContent = "PUBLISHED"; statusEl.dataset.state = "success"; }

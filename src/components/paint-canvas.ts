@@ -82,6 +82,8 @@ export class PaintCanvas extends HTMLElement {
   private _arcPhase: 0 | 1 = 0;
   private _arcP0 = { x: 0, y: 0 };
   private _arcP2 = { x: 0, y: 0 };
+  // Background image (shown through empty/transparent pixels)
+  private _bgPixels: Uint8Array | null = null; // RGBA flat array, logWidth × logHeight
 
   logWidth = 64;
   logHeight = 64;
@@ -580,13 +582,19 @@ export class PaintCanvas extends HTMLElement {
     const dw = w * scale, dh = h * scale;
     const img = ctx.createImageData(dw, dh);
     const d = img.data;
+    const bg = this._bgPixels;
 
     for (let y = 0; y < h; y++) {
       for (let x = 0; x < w; x++) {
         const idx = this._pixels[y * w + x];
         let r: number, g: number, b: number;
         if (idx === EMPTY) {
-          r = g = b = (x + y) % 2 === 0 ? 28 : 18;
+          if (bg) {
+            const bi = (y * w + x) * 4;
+            r = bg[bi]; g = bg[bi + 1]; b = bg[bi + 2];
+          } else {
+            r = g = b = (x + y) % 2 === 0 ? 28 : 18;
+          }
         } else {
           [r, g, b] = PALETTE_RGB[idx];
         }
@@ -676,6 +684,12 @@ export class PaintCanvas extends HTMLElement {
     this.stampData = data;
     this.stampWidth = w;
     this.stampHeight = h;
+  }
+
+  /** Set a background image (RGBA) to show through empty pixels. Must be logWidth × logHeight. */
+  setBackgroundImage(rgba: Uint8Array) {
+    this._bgPixels = rgba;
+    this._render();
   }
 
   clear() {

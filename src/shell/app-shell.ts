@@ -75,12 +75,12 @@ class AppShell extends HTMLElement {
     this.removeEventListener("click", this.onClick);
   }
 
-  private navigate(pathname: string) {
-    if (pathname === window.location.pathname) {
+  private navigate(href: string) {
+    if (href === window.location.pathname + window.location.search) {
       return;
     }
-    window.history.pushState({}, "", pathname);
-    this.renderRoute(pathname);
+    window.history.pushState({}, "", href);
+    this.renderRoute(window.location.pathname);
   }
 
   private renderRoute(pathname: string) {
