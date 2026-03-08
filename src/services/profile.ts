@@ -1,16 +1,17 @@
 /**
  * Profile service — manages the user's WallManifest and publishes content to IPFS/IPNS.
  *
- * Content model (IPNS root directory):
- *   manifest.json  — index: tag CID, wall post CIDs, following list
- *   tag.png        — 64×64 avatar (MY TAG)
+ * Content model:
+ *   IPNS name → manifest CID (a single JSON file, not a directory)
+ *   manifest.json contains CID references to tag.png and wall post images
  *
- * Wall PNGs are pinned as standalone CIDs referenced from manifest.json.
- * The directory is rebuilt and re-published to IPNS on every change.
+ * All images (tag, wall posts) are pinned as standalone CIDs.
+ * The manifest is re-serialised, added to IPFS, pinned, and re-published
+ * to IPNS on every change.
  */
 
-import { addBytes, addDirectory, getNodeId, publish } from './ipfs'
-import { pinCid } from './pinning'
+import { addBytes, getNodeId, publish, resolve, catJson } from './ipfs'
+import { pinFile } from './pinning'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -58,8 +59,7 @@ function _saveManifest(m: WallManifest): void {
 }
 
 // ── Tag PNG byte cache ────────────────────────────────────────────────────────
-// We store the latest tag.png bytes locally so we can include them in the
-// IPFS directory whenever a wall post is published (avoids a round-trip fetch).
+// We cache tag.png bytes locally so publishTag can pin them without re-fetching.
 
 function _cacheTagPng(png: Uint8Array): void {
   try {
@@ -95,53 +95,50 @@ export async function getMyPeerId(): Promise<string> {
 
 /**
  * Publish MY TAG (64×64 PNG) to IPFS/IPNS.
- * Pins the PNG, updates manifest.tag, rebuilds the IPNS-root directory,
- * and re-publishes. Returns the root directory CID.
+ * Pins the PNG, updates manifest.tag, and re-publishes the manifest.
+ * Returns the manifest CID.
  */
 export async function publishTag(png: Uint8Array): Promise<string> {
   const tagCid = await addBytes(png)
   _cacheTagPng(png)
+  pinFile(png, `tag-${tagCid.slice(-8)}.png`).catch(e => console.warn('[profile] tag pin failed:', e))
 
   const manifest = loadManifest()
   manifest.tag = tagCid
   manifest.updatedAt = Date.now()
 
-  const dirCid = await _publishDir(manifest, png)
+  const manifestCid = await _publishManifest(manifest)
   _saveManifest(manifest)
-  return dirCid
+  return manifestCid
 }
 
 /**
  * Publish a THE WALL post to IPFS/IPNS.
- * Prepends the post to wall[] (newest first), rebuilds the IPNS-root directory,
- * and re-publishes. Returns the root directory CID.
+ * Prepends the post to wall[] (newest first) and re-publishes the manifest.
+ * Returns the manifest CID.
  */
 export async function publishWallPost(png: Uint8Array, caption = ''): Promise<string> {
   const postCid = await addBytes(png)
+  pinFile(png, `wall-${postCid.slice(-8)}.png`).catch(e => console.warn('[profile] wall post pin failed:', e))
 
   const manifest = loadManifest()
   manifest.wall = [{ cid: postCid, timestamp: Date.now(), caption }, ...manifest.wall]
   manifest.updatedAt = Date.now()
 
-  const tagPng = _getCachedTagPng() ?? new Uint8Array(0)
-  const dirCid = await _publishDir(manifest, tagPng)
+  const manifestCid = await _publishManifest(manifest)
   _saveManifest(manifest)
-  return dirCid
+  return manifestCid
 }
 
-// ── Internal: build IPFS directory + publish to IPNS ─────────────────────────
+// ── Internal: publish manifest to IPFS + IPNS ────────────────────────────────
 
-async function _publishDir(manifest: WallManifest, tagPng: Uint8Array): Promise<string> {
+async function _publishManifest(manifest: WallManifest): Promise<string> {
   const manifestBytes = new TextEncoder().encode(JSON.stringify(manifest, null, 2))
-  const entries = [
-    { path: 'manifest.json', data: manifestBytes },
-    ...(tagPng.length > 0 ? [{ path: 'tag.png', data: tagPng }] : []),
-  ]
-  const dirCid = await addDirectory(entries)
-  // Both are fire-and-forget — content is locally accessible by CID immediately.
-  publish(dirCid).catch(e => console.warn('[profile] IPNS publish failed:', e))
-  pinCid(dirCid, 'graffiti-manifest').catch(e => console.warn('[profile] Pinata pin failed:', e))
-  return dirCid
+  const manifestCid = await addBytes(manifestBytes)
+  // Pin manifest + publish to IPNS — both fire-and-forget
+  pinFile(manifestBytes, 'manifest.json').catch(e => console.warn('[profile] manifest pin failed:', e))
+  publish(manifestCid).catch(e => console.warn('[profile] IPNS publish failed:', e))
+  return manifestCid
 }
 
 // ── Follow management ─────────────────────────────────────────────────────────
@@ -153,8 +150,28 @@ export async function followPeer(peerId: string): Promise<void> {
   manifest.following = [...manifest.following, peerId]
   manifest.updatedAt = Date.now()
   _saveManifest(manifest)
-  const tagPng = _getCachedTagPng() ?? new Uint8Array(0)
-  _publishDir(manifest, tagPng).catch(e => console.warn('[profile] republish after follow failed:', e))
+  _publishManifest(manifest).catch(e => console.warn('[profile] republish after follow failed:', e))
+}
+
+/**
+ * Resolve a followed peer's IPNS name and fetch their manifest.
+ * Returns null if resolution fails (peer offline, no record, timeout).
+ */
+export async function resolveFollowedPeer(peerId: string): Promise<WallManifest | null> {
+  try {
+    const rootCid = await resolve(peerId)
+    try {
+      // Current format: IPNS → flat manifest JSON
+      return await catJson<WallManifest>(rootCid)
+    } catch {
+      // Legacy format: IPNS → directory containing manifest.json
+      console.info('[profile] Flat fetch failed, trying legacy directory format for', peerId)
+      return await catJson<WallManifest>(rootCid, 'manifest.json')
+    }
+  } catch (err) {
+    console.warn('[profile] Failed to resolve peer', peerId, err)
+    return null
+  }
 }
 
 /** Remove a peer from the following list and persist locally. */

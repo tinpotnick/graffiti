@@ -21,7 +21,10 @@
     "qrcode": "^1.5.4",
     "jsqr": "^1.4.0",
     "helia": "^6.0.0",
+    "@helia/ipns": "^9.1.0",
     "@helia/unixfs": "^7.0.0",
+    "@chainsafe/libp2p-gossipsub": "^14.0.0",
+    "@libp2p/peer-id": "^5.0.0",
     "blockstore-idb": "^3.0.0",
     "datastore-idb": "^4.0.0",
     "multiformats": "^13.0.0"

@@ -6,7 +6,7 @@ A self-sovereign, decentralised social art app. Draw pixel art, post it to your 
 
 - **MY TAG** — a 64×64 pixel avatar that identifies you
 - **THE WALL** — a 320×180 canvas you post drawings to
-- Content is stored on [IPFS](https://ipfs.tech/) using [Kubo](https://github.com/ipfs/kubo) (bundled — no installation needed)
+- Content is stored on [IPFS](https://ipfs.tech/) using an in-browser [Helia](https://github.com/ipfs/helia) node + optional remote pinning
 - Your identity is your IPFS node's keypair; your wall is published to your IPNS name (PeerID)
 - Follow others by sharing IPNS addresses; follow-of-follows lets the network grow organically
 
@@ -16,7 +16,7 @@ A self-sovereign, decentralised social art app. Draw pixel art, post it to your 
 |---|---|
 | UI | Vanilla TypeScript + Web Components |
 | Desktop shell | [Tauri 2](https://tauri.app/) (Rust) |
-| IPFS node | [Kubo](https://github.com/ipfs/kubo) (bundled sidecar) |
+| IPFS node | [Helia](https://github.com/ipfs/helia) (in-browser) + [Pinata](https://www.pinata.cloud/) pinning |
 | Markdown editor | [Tiptap v3](https://tiptap.dev/) |
 | Build | Vite 6 |
 
@@ -89,42 +89,34 @@ src/
     feed-item.ts          post card
     top-nav.ts            bottom navigation
   services/
-    ipfs.ts               Kubo HTTP API wrapper (add, cat, publish, resolve)
+    ipfs.ts               Helia IPFS node (add, cat, IPNS publish/resolve)
+    pinning.ts            Pinata remote pinning (fire-and-forget uploads)
+    profile.ts            manifest management, publish, follow/unfollow
   data/
     stamps.ts             stamp definitions
 src-tauri/
-  src/lib.rs              Tauri commands: ipfs_start / ipfs_stop / ipfs_status
-  binaries/               Kubo binary (git-ignored, fetched by download script)
+  src/lib.rs              Tauri setup
 scripts/
-  download-kubo.sh        download Kubo for the current platform
   tauri-dev.sh            launch full Tauri dev environment in Docker
 ```
 
 ## IPFS data layout
 
-Each user owns an IPFS directory published to their IPNS name (= their Kubo node's PeerID):
+Each user's IPNS name (= PeerID) points directly to a manifest CID:
 
 ```
-/ipns/<PeerID>/
-  manifest.json     ← index of all content + social graph
-  tag.png           ← 64×64 avatar (MY TAG export)
-  wall/
-    <timestamp>.png ← wall posts, newest first
+IPNS name (PeerID) → manifest CID (JSON)
+  ├── tag: "<CID>"          ← 64×64 avatar PNG
+  ├── wall: [{ cid, … }]   ← wall post PNGs
+  ├── following: ["<PeerID>", …]
+  └── displayName, updatedAt, version
 ```
 
-`manifest.json`:
-```json
-{
-  "version": 1,
-  "displayName": "...",
-  "tag": "<CID>",
-  "wall": [{ "cid": "...", "timestamp": 0, "caption": "" }],
-  "following": ["<PeerID>"],
-  "updatedAt": 0
-}
-```
+All images are standalone CIDs — no directory wrapping. This ensures CID determinism across IPFS implementations (Helia JS and Kubo Go produce different directory CIDs for identical content, but identical single-file CIDs).
 
-The IPFS repo is stored in the app data directory (`~/.local/share/graffiti/ipfs/` on Linux) and never touches an existing `~/.ipfs` installation.
+The local blockstore is IndexedDB-backed, so the node's identity persists across app restarts.
+
+See [IPFS.md](IPFS.md) for architecture details, non-standard choices, self-hosting guidance, and alternative pinning providers.
 
 ## Mobile
 
