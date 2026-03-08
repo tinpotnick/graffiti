@@ -8,10 +8,12 @@ import { defineCreateView } from "./views/create-view";
 import { definePaintCanvas } from "./components/paint-canvas";
 import { definePaintView } from "./views/paint-view";
 import { defineAccountView } from "./views/account-view";
+import { defineWallScroll } from "./components/wall-scroll";
 
 defineTopNav();
 defineFeedItem();
 defineMdEditor();
+defineWallScroll();
 defineHomeView();
 defineCreateView();
 definePaintCanvas();

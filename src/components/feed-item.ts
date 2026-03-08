@@ -1,4 +1,5 @@
 import { catBytes } from '../services/ipfs'
+import { loadWallPostImage, relativeTime, escapeHtml } from '../services/compositing'
 
 export interface FeedPost {
   cid: string
@@ -155,7 +156,7 @@ class FeedItem extends HTMLElement {
     if (!this._root) return
     const { caption, timestamp, peerId, bounds, wallRef, wallBounds } = this._post
     const shortId = peerId.length > 16 ? `${peerId.slice(0, 8)}…${peerId.slice(-6)}` : peerId
-    const timeStr = timestamp ? _relativeTime(timestamp) : ''
+    const timeStr = timestamp ? relativeTime(timestamp) : ''
 
     // Build TAG THIS link — use the root wall ref (or this post's own CID for originals)
     const refCid = wallRef ?? this._post.cid
@@ -168,7 +169,7 @@ class FeedItem extends HTMLElement {
         <div class="loading" id="img-slot">LOADING…</div>
         <div class="post-body">
           ${wallRef ? '<div class="wall-ref-badge">TAGGED A WALL</div>' : ''}
-          ${caption ? `<p class="caption">${_escapeHtml(caption)}</p>` : ''}
+          ${caption ? `<p class="caption">${escapeHtml(caption)}</p>` : ''}
           <div class="meta">
             <img class="tag-img" id="tag-slot" alt="">
             <div class="meta-text">
@@ -185,16 +186,7 @@ class FeedItem extends HTMLElement {
   private async _loadImage() {
     if (!this._post.cid || !this._root) return
     try {
-      let blobUrl: string
-
-      if (this._post.wallRef) {
-        // Tag post: composite original wall + this delta
-        blobUrl = await this._compositeImage()
-      } else {
-        const bytes = await catBytes(this._post.cid)
-        const blob = new Blob([bytes.buffer as ArrayBuffer], { type: 'image/png' })
-        blobUrl = URL.createObjectURL(blob)
-      }
+      const blobUrl = await loadWallPostImage(this._post)
 
       if (this._imageUrl) URL.revokeObjectURL(this._imageUrl)
       this._imageUrl = blobUrl
@@ -213,47 +205,6 @@ class FeedItem extends HTMLElement {
     }
   }
 
-  /** Composite the original wall + this delta into a single image. */
-  private async _compositeImage(): Promise<string> {
-    const { cid, bounds, wallRef, wallBounds } = this._post
-
-    // Fetch both images in parallel
-    const [origBytes, deltaBytes] = await Promise.all([
-      catBytes(wallRef!),
-      catBytes(cid),
-    ])
-
-    const loadImg = (bytes: Uint8Array): Promise<HTMLImageElement> => {
-      const blob = new Blob([bytes.buffer as ArrayBuffer], { type: 'image/png' })
-      const url = URL.createObjectURL(blob)
-      return new Promise((resolve, reject) => {
-        const img = new Image()
-        img.onload = () => { URL.revokeObjectURL(url); resolve(img) }
-        img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('decode failed')) }
-        img.src = url
-      })
-    }
-
-    const [origImg, deltaImg] = await Promise.all([loadImg(origBytes), loadImg(deltaBytes)])
-
-    // Composite on a 320×180 canvas
-    const oc = document.createElement('canvas')
-    oc.width = 320; oc.height = 180
-    const ctx = oc.getContext('2d')!
-    // Draw original at its bounds
-    const ob = wallBounds ?? { x: 0, y: 0, w: 320, h: 180 }
-    ctx.drawImage(origImg, ob.x, ob.y, ob.w, ob.h)
-    // Draw delta at its bounds
-    const db = bounds ?? { x: 0, y: 0, w: 320, h: 180 }
-    ctx.drawImage(deltaImg, db.x, db.y, db.w, db.h)
-
-    return new Promise((resolve) => {
-      oc.toBlob((blob) => {
-        resolve(URL.createObjectURL(blob!))
-      }, 'image/png')
-    })
-  }
-
   private async _loadTag() {
     if (!this._post.tagCid || !this._root) return
     try {
@@ -270,20 +221,6 @@ class FeedItem extends HTMLElement {
   }
 }
 
-function _relativeTime(ts: number): string {
-  const diff = Date.now() - ts
-  const mins = Math.floor(diff / 60_000)
-  if (mins < 1) return 'just now'
-  if (mins < 60) return `${mins}m ago`
-  const hrs = Math.floor(mins / 60)
-  if (hrs < 24) return `${hrs}h ago`
-  const days = Math.floor(hrs / 24)
-  return `${days}d ago`
-}
-
-function _escapeHtml(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-}
 
 export function defineFeedItem() {
   if (!customElements.get('feed-item')) {

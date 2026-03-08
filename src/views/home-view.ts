@@ -1,12 +1,46 @@
 import { loadManifest, getMyPeerId, resolveFollowedPeer } from '../services/profile'
 import type { FeedPost } from '../components/feed-item'
+import type { WallScrollElement } from '../components/wall-scroll'
 
 type FeedItemElement = HTMLElement & { post: FeedPost }
 
 const STYLES = `
   :host { display: block; }
 
-  .feed {
+  .view-toggle {
+    display: flex;
+    margin-bottom: 0.5rem;
+  }
+
+  .toggle-btn {
+    flex: 1;
+    padding: 0.6rem 0;
+    font-family: var(--font-pixel);
+    font-size: 0.55rem;
+    letter-spacing: 2px;
+    cursor: pointer;
+    background: var(--surface-raised);
+    color: var(--text-muted);
+    border: 1px solid var(--border);
+    transition: color 0.15s, background 0.15s;
+  }
+
+  .toggle-btn:first-child {
+    border-radius: var(--radius-md) 0 0 var(--radius-md);
+    border-right: none;
+  }
+
+  .toggle-btn:last-child {
+    border-radius: 0 var(--radius-md) var(--radius-md) 0;
+  }
+
+  .toggle-btn.active {
+    background: var(--accent);
+    color: var(--text-inverse);
+    border-color: var(--accent);
+  }
+
+  .feed-list {
     display: flex;
     flex-direction: column;
     gap: 1rem;
@@ -25,22 +59,49 @@ const STYLES = `
 
 class HomeView extends HTMLElement {
   private _root!: ShadowRoot
+  private _posts: FeedPost[] = []
+  private _viewMode: 'feed' | 'wall' = 'wall'
+  private _loading = true
 
   connectedCallback() {
     if (this.shadowRoot) return
+    this._viewMode = (localStorage.getItem('graffiti:home-view-mode') as 'feed' | 'wall') || 'wall'
     this._root = this.attachShadow({ mode: 'open' })
     this._root.innerHTML = `
       <style>${STYLES}</style>
-      <section class="feed">
+      <div class="view-toggle">
+        <button class="toggle-btn" data-mode="wall">WALL</button>
+        <button class="toggle-btn" data-mode="feed">FEED</button>
+      </div>
+      <section class="content">
         <div class="status">LOADING…</div>
       </section>
     `
+    this._updateToggle()
+    this._bindToggle()
     this._loadFeed()
   }
 
-  private async _loadFeed() {
-    const feed = this._root.querySelector('.feed')!
+  private _bindToggle() {
+    this._root.querySelector('.view-toggle')!.addEventListener('click', (e) => {
+      const btn = (e.target as HTMLElement).closest<HTMLElement>('.toggle-btn')
+      if (!btn?.dataset.mode) return
+      const next = btn.dataset.mode as 'feed' | 'wall'
+      if (next === this._viewMode) return
+      this._viewMode = next
+      try { localStorage.setItem('graffiti:home-view-mode', next) } catch {}
+      this._updateToggle()
+      this._renderView()
+    })
+  }
 
+  private _updateToggle() {
+    this._root.querySelectorAll<HTMLElement>('.toggle-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.mode === this._viewMode)
+    })
+  }
+
+  private async _loadFeed() {
     try {
       const manifest = loadManifest()
       const myPeerId = await getMyPeerId()
@@ -81,21 +142,44 @@ class HomeView extends HTMLElement {
       // Sort newest first
       posts.sort((a, b) => b.timestamp - a.timestamp)
 
-      feed.innerHTML = ''
+      this._posts = posts
+      this._loading = false
+      this._renderView()
+    } catch (err) {
+      console.error('[home] Failed to load feed:', err)
+      const content = this._root.querySelector('.content')!
+      content.innerHTML = '<div class="status">FAILED TO LOAD FEED</div>'
+    }
+  }
 
-      if (posts.length === 0) {
-        feed.innerHTML = '<div class="status">NO POSTS YET</div>'
-        return
-      }
+  private _renderView() {
+    const content = this._root.querySelector('.content')!
 
-      for (const post of posts) {
+    if (this._loading) {
+      content.innerHTML = '<div class="status">LOADING…</div>'
+      return
+    }
+
+    if (this._posts.length === 0) {
+      content.innerHTML = '<div class="status">NO POSTS YET</div>'
+      return
+    }
+
+    content.innerHTML = ''
+
+    if (this._viewMode === 'wall') {
+      const wallScroll = document.createElement('wall-scroll') as WallScrollElement
+      wallScroll.posts = this._posts
+      content.appendChild(wallScroll)
+    } else {
+      const feed = document.createElement('div')
+      feed.className = 'feed-list'
+      for (const post of this._posts) {
         const item = document.createElement('feed-item') as FeedItemElement
         item.post = post
         feed.appendChild(item)
       }
-    } catch (err) {
-      console.error('[home] Failed to load feed:', err)
-      feed.innerHTML = '<div class="status">FAILED TO LOAD FEED</div>'
+      content.appendChild(feed)
     }
   }
 }
