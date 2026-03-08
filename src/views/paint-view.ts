@@ -658,12 +658,24 @@ class PaintView extends HTMLElement {
       if (t.dataset.tool) { this._selectTool(t.dataset.tool as PaintTool); return; }
       if (t.dataset.size !== undefined) { this._selectBrushSize(parseInt(t.dataset.size)); return; }
 
-      if (t.dataset.group !== undefined) {
-        const g = parseInt(t.dataset.group);
+      // Palette group — click may land on the inner <span> dot
+      const groupBtn = t.dataset.group !== undefined
+        ? t
+        : t.closest<HTMLElement>(".palette-group-btn");
+      if (groupBtn?.dataset.group !== undefined) {
+        const g = parseInt(groupBtn.dataset.group);
         if (g !== this._colorGroup) {
           this._colorGroup = g;
           this._buildShadeRow(g);
           this._updateGroupUI();
+        }
+        // Auto-select the same shade offset within the new group
+        const shade = this._colorIndex % 16;
+        const next = g * 16 + shade;
+        if (next < PALETTE_HEX.length && next !== this._colorIndex) {
+          this._colorIndex = next;
+          this._canvas.setColor(this._colorIndex);
+          this._updateColorUI();
         }
         return;
       }
