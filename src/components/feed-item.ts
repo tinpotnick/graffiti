@@ -14,6 +14,7 @@ const STYLES = `
   }
 
   article {
+    position: relative;
     background: var(--surface-raised);
     border: 1px solid var(--border);
     border-radius: var(--radius-xl);
@@ -30,6 +31,7 @@ const STYLES = `
   }
 
   .post-body {
+    position: relative;
     padding: 0.75rem 1rem;
   }
 
@@ -52,12 +54,17 @@ const STYLES = `
   }
 
   .tag-img {
-    width: 24px;
-    height: 24px;
-    border-radius: var(--radius-sm);
+    position: absolute;
+    top: -32px;
+    right: 12px;
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
+    border: 2px solid var(--surface-raised);
     image-rendering: pixelated;
     background: var(--surface-inset);
-    flex-shrink: 0;
+    z-index: 1;
+    object-fit: cover;
   }
 
   .meta-text {
