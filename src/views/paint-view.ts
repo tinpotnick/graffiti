@@ -1,5 +1,4 @@
 import { PALETTE_HEX, PALETTE_RGB, EMPTY, PaintCanvas, PaintTool } from "../components/paint-canvas";
-import { STAMP_CATEGORIES, StampDef } from "../data/stamps";
 import { publishTag, publishWallPost } from "../services/profile";
 
 type Mode = "tag" | "wall";
@@ -267,45 +266,33 @@ const STYLES = `
   }
   .palette-shades .swatch.active { border-color: #fff; box-shadow: inset 0 0 0 1px #000; }
 
-  /* ── Stamp panel ────────────────────────────── */
-  .stamp-panel {
-    display: flex; flex-direction: column; gap: 4px;
+  /* ── Sign panel (avatar stamp) ─────────────── */
+  .sign-panel {
+    display: flex; align-items: center; gap: 6px;
     border: 2px solid var(--bl);
     padding: 6px;
     background: var(--bg-dn);
   }
-  .stamp-panel-header { display: flex; align-items: center; gap: 6px; }
-  .stamp-label { color: var(--px-muted); font-size: 6px; letter-spacing: 1.5px; flex-shrink: 0; }
-  .stamp-cats { display: flex; gap: 3px; flex-wrap: wrap; }
-  .stamp-cat-btn {
-    padding: 4px 7px;
-    font-family: inherit; font-size: 6px; letter-spacing: 1px;
-    cursor: pointer;
-    background: var(--bg-up); color: var(--px-muted);
-    border: 2px solid;
-    border-color: var(--bl) var(--bd) var(--bd) var(--bl);
-  }
-  .stamp-cat-btn.active {
-    background: var(--bg-dn); color: var(--px-active);
-    border-color: var(--bd) var(--bl) var(--bl) var(--bd);
-  }
-  .stamp-grid {
-    display: flex; gap: 4px;
-    overflow-x: auto; scrollbar-width: none;
-  }
-  .stamp-grid::-webkit-scrollbar { display: none; }
-  .stamp-thumb {
-    width: 36px; height: 36px;
+  .sign-panel.hidden { display: none; }
+  .sign-label { color: var(--px-muted); font-size: 6px; letter-spacing: 1.5px; flex-shrink: 0; }
+  .sign-btn {
+    width: 48px; height: 48px;
     cursor: pointer;
     background: var(--bg-up);
     border: 2px solid;
     border-color: var(--bl) var(--bd) var(--bd) var(--bl);
-    flex-shrink: 0; padding: 2px;
-    box-sizing: border-box;
+    padding: 2px; box-sizing: border-box;
     display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
   }
-  .stamp-thumb.active { border-color: var(--px-active); background: var(--bg-dn); }
-  .stamp-thumb canvas { image-rendering: pixelated; display: block; }
+  .sign-btn.active {
+    border-color: var(--px-active); background: var(--bg-dn);
+  }
+  .sign-btn:disabled { opacity: 0.35; cursor: default; }
+  .sign-btn canvas { image-rendering: pixelated; display: block; }
+  .sign-hint {
+    color: var(--px-muted); font-size: 6px; letter-spacing: 1px;
+  }
 
   /* ── Canvas ─────────────────────────────────── */
   .canvas-wrapper {
@@ -370,8 +357,7 @@ class PaintView extends HTMLElement {
   private _brushSize = 1;
   private _mirrorX = false;
   private _shapeMode: "outline" | "fill" = "outline";
-  private _selectedStamp: StampDef | null = null;
-  private _selectedCat = STAMP_CATEGORIES[0].id;
+  private _signActive = false;
   private _tagState: Uint8Array | null = null;
   private _wallState: Uint8Array | null = null;
 
@@ -484,12 +470,12 @@ class PaintView extends HTMLElement {
           <div class="palette-shades" id="palette-shades"></div>
         </div>
 
-        <div class="stamp-panel">
-          <div class="stamp-panel-header">
-            <span class="stamp-label">STAMPS</span>
-            <div class="stamp-cats" id="stamp-cats"></div>
-          </div>
-          <div class="stamp-grid" id="stamp-grid"></div>
+        <div class="sign-panel hidden" id="sign-panel">
+          <span class="sign-label">SIGN</span>
+          <button class="sign-btn" id="sign-btn" data-action="sign" title="Stamp your tag as signature">
+            <canvas id="sign-preview" width="44" height="44"></canvas>
+          </button>
+          <span class="sign-hint" id="sign-hint"></span>
         </div>
 
         <div class="canvas-wrapper" id="canvas-wrap"></div>
@@ -500,18 +486,7 @@ class PaintView extends HTMLElement {
     `;
 
     this._buildPalette();
-
-    // Stamp category buttons
-    const catsEl = this._shadow.querySelector<HTMLElement>("#stamp-cats")!;
-    STAMP_CATEGORIES.forEach((cat, i) => {
-      const btn = document.createElement("button");
-      btn.className = "stamp-cat-btn" + (i === 0 ? " active" : "");
-      btn.dataset.cat = cat.id;
-      btn.textContent = cat.label;
-      catsEl.appendChild(btn);
-    });
-
-    this._buildStampGrid(this._selectedCat);
+    this._updateSignPanel();
   }
 
   private _buildPalette() {
@@ -544,45 +519,89 @@ class PaintView extends HTMLElement {
     }
   }
 
-  private _buildStampGrid(catId: string) {
-    const grid = this._shadow.querySelector<HTMLElement>("#stamp-grid");
-    if (!grid) return;
-    grid.innerHTML = "";
-    const cat = STAMP_CATEGORIES.find((c) => c.id === catId);
-    if (!cat) return;
-    cat.stamps.forEach((stamp) => {
-      const btn = document.createElement("button");
-      btn.className = "stamp-thumb" + (this._selectedStamp?.id === stamp.id ? " active" : "");
-      btn.dataset.stampId = stamp.id;
-      btn.dataset.catId = catId;
-      btn.title = stamp.label;
-      btn.appendChild(this._renderStampThumb(stamp));
-      grid.appendChild(btn);
-    });
+  /** Show or hide the sign panel based on mode, and render the tag preview. */
+  private _updateSignPanel() {
+    const panel = this._shadow.querySelector<HTMLElement>("#sign-panel");
+    if (!panel) return;
+
+    // Only show sign panel in wall mode
+    if (this._mode !== "wall") {
+      panel.classList.add("hidden");
+      return;
+    }
+    panel.classList.remove("hidden");
+
+    const btn = this._shadow.querySelector<HTMLButtonElement>("#sign-btn");
+    const hint = this._shadow.querySelector<HTMLElement>("#sign-hint");
+    const preview = this._shadow.querySelector<HTMLCanvasElement>("#sign-preview");
+    const tagPixels = this._loadTagPixels();
+
+    if (!tagPixels) {
+      if (btn) btn.disabled = true;
+      if (hint) hint.textContent = "DRAW A TAG FIRST";
+      if (preview) {
+        const ctx = preview.getContext("2d")!;
+        ctx.clearRect(0, 0, preview.width, preview.height);
+      }
+      return;
+    }
+
+    if (btn) btn.disabled = false;
+    if (hint) hint.textContent = "";
+    if (preview) this._renderTagPreview(preview, tagPixels);
   }
 
-  private _renderStampThumb(stamp: { data: Uint8Array; width: number; height: number }): HTMLCanvasElement {
-    const scale = 2;
-    const c = document.createElement("canvas");
-    c.width = stamp.width * scale;
-    c.height = stamp.height * scale;
-    c.style.width = "32px";
-    c.style.height = "32px";
-    const ctx = c.getContext("2d")!;
-    const THUMB_BG  = "#0d0d1a";
-    const THUMB_FG1 = "#c0bfd6";
-    const THUMB_FG2 = "#ffffff";  // pure white — matches palette index 31
-    ctx.fillStyle = THUMB_BG;
-    ctx.fillRect(0, 0, c.width, c.height);
-    for (let y = 0; y < stamp.height; y++) {
-      for (let x = 0; x < stamp.width; x++) {
-        const v = stamp.data[y * stamp.width + x];
-        if (!v) continue;
-        ctx.fillStyle = v === 1 ? THUMB_FG1 : THUMB_FG2;
-        ctx.fillRect(x * scale, y * scale, scale, scale);
+  /** Load tag pixel data (palette indices) from localStorage. */
+  private _loadTagPixels(): Uint8Array | null {
+    try {
+      const str = localStorage.getItem("graffiti:tag-pixels");
+      if (!str) return null;
+      const binary = atob(str);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+      if (bytes.length !== 64 * 64) return null;
+      // Check it's not completely empty
+      if (bytes.every((b) => b === EMPTY)) return null;
+      return bytes;
+    } catch { return null; }
+  }
+
+  /** Render a 64×64 tag into a small preview canvas. */
+  private _renderTagPreview(canvas: HTMLCanvasElement, pixels: Uint8Array) {
+    const size = canvas.width; // 44
+    const ctx = canvas.getContext("2d")!;
+    const img = ctx.createImageData(size, size);
+    const d = img.data;
+    const scale = size / 64;
+
+    for (let py = 0; py < size; py++) {
+      for (let px = 0; px < size; px++) {
+        const srcX = Math.floor(px / scale);
+        const srcY = Math.floor(py / scale);
+        const idx = pixels[srcY * 64 + srcX];
+        const di = (py * size + px) * 4;
+        if (idx === EMPTY) {
+          d[di] = 13; d[di + 1] = 13; d[di + 2] = 26; d[di + 3] = 255;
+        } else {
+          const [r, g, b] = PALETTE_RGB[idx];
+          d[di] = r; d[di + 1] = g; d[di + 2] = b; d[di + 3] = 255;
+        }
       }
     }
-    return c;
+    ctx.putImageData(img, 0, 0);
+  }
+
+  /** Activate the avatar stamp tool using the saved tag. */
+  private _activateSign() {
+    const tagPixels = this._loadTagPixels();
+    if (!tagPixels) return;
+
+    this._signActive = true;
+    this._tool = "stamp";
+    this._canvas.setStamp(tagPixels, 64, 64);
+    this._canvas.setTool("stamp");
+    this._updateToolUI();
+    this._updateSignBtnUI();
   }
 
   private _mountCanvas() {
@@ -604,13 +623,6 @@ class PaintView extends HTMLElement {
     this._canvas.setBrushSize(this._brushSize);
     this._canvas.setMirrorX(this._mirrorX);
     this._canvas.setShapeMode(this._shapeMode);
-    if (this._selectedStamp) {
-      this._canvas.setStamp(
-        this._selectedStamp.data,
-        this._selectedStamp.width,
-        this._selectedStamp.height
-      );
-    }
 
     const undoBtn = this._shadow.querySelector<HTMLButtonElement>("#undo-btn");
     const redoBtn = this._shadow.querySelector<HTMLButtonElement>("#redo-btn");
@@ -711,23 +723,10 @@ class PaintView extends HTMLElement {
         return;
       }
 
-      if (t.dataset.cat !== undefined) {
-        this._selectedCat = t.dataset.cat;
-        this._shadow.querySelectorAll<HTMLElement>(".stamp-cat-btn").forEach((b) => {
-          b.classList.toggle("active", b.dataset.cat === this._selectedCat);
-        });
-        this._buildStampGrid(this._selectedCat);
-        return;
-      }
-
-      // Stamp thumb — click may land on the inner <canvas>
-      const thumbBtn = t.classList.contains("stamp-thumb")
-        ? t
-        : t.closest<HTMLElement>(".stamp-thumb");
-      if (thumbBtn?.dataset.stampId) {
-        const cat = STAMP_CATEGORIES.find((c) => c.id === thumbBtn.dataset.catId);
-        const stamp = cat?.stamps.find((s) => s.id === thumbBtn.dataset.stampId);
-        if (stamp) this._selectStamp(stamp);
+      // Sign button — click may land on the inner <canvas>
+      const signBtn = t.closest<HTMLElement>("#sign-btn");
+      if (signBtn || t.dataset.action === "sign") {
+        this._activateSign();
         return;
       }
     });
@@ -750,6 +749,8 @@ class PaintView extends HTMLElement {
     });
     const publishBtn = this._shadow.querySelector<HTMLButtonElement>("#publish-btn");
     if (publishBtn) publishBtn.textContent = next === "tag" ? "PUBLISH TAG" : "POST TO WALL";
+    this._signActive = false;
+    this._updateSignPanel();
     this._mountCanvas();
   }
 
@@ -758,18 +759,9 @@ class PaintView extends HTMLElement {
     this._canvas.setTool(tool);
     this._updateToolUI();
     if (tool !== "stamp") {
-      this._selectedStamp = null;
-      this._updateStampUI();
+      this._signActive = false;
+      this._updateSignBtnUI();
     }
-  }
-
-  private _selectStamp(stamp: StampDef) {
-    this._selectedStamp = stamp;
-    this._tool = "stamp";
-    this._canvas.setStamp(stamp.data, stamp.width, stamp.height);
-    this._canvas.setTool("stamp");
-    this._updateToolUI();
-    this._updateStampUI();
   }
 
   private _selectBrushSize(size: number) {
@@ -832,10 +824,9 @@ class PaintView extends HTMLElement {
     btn.classList.toggle("active", this._shapeMode === "fill");
   }
 
-  private _updateStampUI() {
-    this._shadow.querySelectorAll<HTMLElement>(".stamp-thumb").forEach((btn) => {
-      btn.classList.toggle("active", btn.dataset.stampId === this._selectedStamp?.id);
-    });
+  private _updateSignBtnUI() {
+    const btn = this._shadow.querySelector<HTMLElement>("#sign-btn");
+    if (btn) btn.classList.toggle("active", this._signActive);
   }
 
   // ── LocalStorage ──────────────────────────────────────

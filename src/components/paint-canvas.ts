@@ -318,9 +318,8 @@ export class PaintCanvas extends HTMLElement {
     for (let dy = 0; dy < sh; dy++) {
       for (let dx = 0; dx < sw; dx++) {
         const val = this.stampData[dy * sw + dx];
-        if (!val) continue;
-        const colorIdx = val === 1 ? this.colorIndex : 31; // 31 = pure white
-        this._setPixel(cx - offX + dx, cy - offY + dy, colorIdx);
+        if (val === EMPTY) continue;
+        this._setPixel(cx - offX + dx, cy - offY + dy, val);
       }
     }
   }
