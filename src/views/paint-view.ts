@@ -405,6 +405,8 @@ class PaintView extends HTMLElement {
         const wh = parseInt(params.get("wh") ?? "180");
         this._wallRef = { cid: wallRefCid, bounds: { x: wx, y: wy, w: ww, h: wh } };
         this._mode = "wall"; // force wall mode
+      } else if (params.get("mode") === "wall") {
+        this._mode = "wall";
       }
 
       this._shadow = this.attachShadow({ mode: "open" });

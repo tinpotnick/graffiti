@@ -566,11 +566,29 @@ export class PaintCanvas extends HTMLElement {
     if (target === color) return;
     const stack: [number, number][] = [[sx, sy]];
     const w = this.logWidth, h = this.logHeight;
+    const bg = this._bgPixels;
+
+    // When a background image is present (tagging mode), use background RGB
+    // to constrain the fill so it respects visual edges the user can see.
+    let bgTarget: number | undefined;
+    if (bg && target === EMPTY) {
+      const bi = (sy * w + sx) * 4;
+      bgTarget = (bg[bi] << 16) | (bg[bi + 1] << 8) | bg[bi + 2];
+    }
+
     while (stack.length) {
       const [x, y] = stack.pop()!;
       if (x < 0 || x >= w || y < 0 || y >= h) continue;
-      if (this._pixels[y * w + x] !== target) continue;
-      this._pixels[y * w + x] = color;
+      const pi = y * w + x;
+      if (this._pixels[pi] !== target) continue;
+      // If we're filling over EMPTY pixels with a background, also check
+      // that the background color matches so we stop at visual boundaries.
+      if (bgTarget !== undefined) {
+        const bi = pi * 4;
+        const bgc = (bg![bi] << 16) | (bg![bi + 1] << 8) | bg![bi + 2];
+        if (bgc !== bgTarget) continue;
+      }
+      this._pixels[pi] = color;
       stack.push([x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]);
     }
   }

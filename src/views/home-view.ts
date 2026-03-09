@@ -2,7 +2,7 @@ import { loadManifest, getMyPeerId, resolveFollowedPeer } from '../services/prof
 import type { FeedPost } from '../components/feed-item'
 import type { WallScrollElement } from '../components/wall-scroll'
 
-type FeedItemElement = HTMLElement & { post: FeedPost }
+type FeedItemElement = HTMLElement & { post: FeedPost; myPeerId: string }
 
 const STYLES = `
   :host { display: block; }
@@ -60,6 +60,7 @@ const STYLES = `
 class HomeView extends HTMLElement {
   private _root!: ShadowRoot
   private _posts: FeedPost[] = []
+  private _myPeerId = ''
   private _viewMode: 'feed' | 'wall' = 'wall'
   private _loading = true
 
@@ -80,6 +81,12 @@ class HomeView extends HTMLElement {
     this._updateToggle()
     this._bindToggle()
     this._loadFeed()
+
+    // Re-fetch feed when navigating back to home (cached SPA view)
+    window.addEventListener('route-change', (e: Event) => {
+      const { pathname } = (e as CustomEvent).detail
+      if (pathname === '/') this._loadFeed()
+    })
   }
 
   private _bindToggle() {
@@ -105,6 +112,7 @@ class HomeView extends HTMLElement {
     try {
       const manifest = loadManifest()
       const myPeerId = await getMyPeerId()
+      this._myPeerId = myPeerId
 
       // Own posts
       const posts: FeedPost[] = manifest.wall.map(p => ({
@@ -175,6 +183,7 @@ class HomeView extends HTMLElement {
 
     if (this._viewMode === 'wall') {
       const wallScroll = document.createElement('wall-scroll') as WallScrollElement
+      wallScroll.myPeerId = this._myPeerId
       wallScroll.posts = this._posts
       content.appendChild(wallScroll)
     } else {
@@ -182,6 +191,7 @@ class HomeView extends HTMLElement {
       feed.className = 'feed-list'
       for (const post of this._posts) {
         const item = document.createElement('feed-item') as FeedItemElement
+        item.myPeerId = this._myPeerId
         item.post = post
         feed.appendChild(item)
       }

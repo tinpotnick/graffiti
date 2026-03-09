@@ -173,6 +173,7 @@ class FeedItem extends HTMLElement {
   private _post: FeedPost = { cid: '', caption: '', timestamp: 0, peerId: '', tagCid: '' }
   private _imageUrl: string | null = null
   private _tagUrl: string | null = null
+  myPeerId = ''
 
   set post(value: FeedPost) {
     this._post = value
@@ -211,10 +212,19 @@ class FeedItem extends HTMLElement {
     const timeStr = timestamp ? relativeTime(timestamp) : ''
     const isText = type === 'text'
 
-    // Build TAG THIS link — use the root wall ref (or this post's own CID for originals)
-    const refCid = wallRef ?? cid
-    const refBounds = wallRef ? (wallBounds ?? { x: 0, y: 0, w: 320, h: 180 }) : (bounds ?? { x: 0, y: 0, w: 320, h: 180 })
-    const tagHref = `/paint?wallRef=${encodeURIComponent(refCid)}&wx=${refBounds.x}&wy=${refBounds.y}&ww=${refBounds.w}&wh=${refBounds.h}`
+    // Own wall → EDIT; other walls → TAG THIS
+    const isOwn = this.myPeerId && peerId === this.myPeerId && !wallRef
+    let tagHref: string
+    let tagLabel: string
+    if (isOwn) {
+      tagHref = '/paint?mode=wall'
+      tagLabel = 'EDIT'
+    } else {
+      const refCid = wallRef ?? cid
+      const refBounds = wallRef ? (wallBounds ?? { x: 0, y: 0, w: 320, h: 180 }) : (bounds ?? { x: 0, y: 0, w: 320, h: 180 })
+      tagHref = `/paint?wallRef=${encodeURIComponent(refCid)}&wx=${refBounds.x}&wy=${refBounds.y}&ww=${refBounds.w}&wh=${refBounds.h}`
+      tagLabel = 'TAG THIS'
+    }
 
     let topContent: string
     if (isText) {
@@ -231,7 +241,7 @@ class FeedItem extends HTMLElement {
       topContent = `<div class="loading" id="img-slot">LOADING…</div>`
     }
 
-    const tagLink = isText ? '' : `<a class="tag-link" href="${tagHref}">TAG THIS</a>`
+    const tagLink = isText ? '' : `<a class="tag-link" href="${tagHref}">${tagLabel}</a>`
     const staleBadge = this._post.stale && this._post.resolvedAt
       ? `<span class="stale-badge">CACHED · ${relativeTime(this._post.resolvedAt)}</span>`
       : ''

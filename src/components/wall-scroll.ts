@@ -2,7 +2,7 @@ import { catBytes } from '../services/ipfs'
 import { compositeWallState, relativeTime, escapeHtml } from '../services/compositing'
 import type { FeedPost } from './feed-item'
 
-export type WallScrollElement = HTMLElement & { posts: FeedPost[] }
+export type WallScrollElement = HTMLElement & { posts: FeedPost[]; myPeerId: string }
 
 interface WallState {
   base: FeedPost
@@ -164,6 +164,7 @@ class WallScroll extends HTMLElement {
   private _objectUrls = new Map<number, string>()
   private _tagCache = new Map<string, string>()
   private _activeOverlay: HTMLElement | null = null
+  myPeerId = ''
 
   set posts(value: FeedPost[]) {
     this._posts = value
@@ -295,9 +296,18 @@ class WallScroll extends HTMLElement {
       : base.peerId
     const timeStr = state.latestTimestamp ? relativeTime(state.latestTimestamp) : ''
 
-    // TAG THIS always references the base wall
-    const refBounds = base.bounds ?? { x: 0, y: 0, w: 320, h: 180 }
-    const tagHref = `/paint?wallRef=${encodeURIComponent(base.cid)}&wx=${refBounds.x}&wy=${refBounds.y}&ww=${refBounds.w}&wh=${refBounds.h}`
+    // Own wall → EDIT (go to wall painter); other walls → TAG THIS
+    const isOwn = this.myPeerId && base.peerId === this.myPeerId
+    let actionHref: string
+    let actionLabel: string
+    if (isOwn) {
+      actionHref = '/paint?mode=wall'
+      actionLabel = 'EDIT'
+    } else {
+      const refBounds = base.bounds ?? { x: 0, y: 0, w: 320, h: 180 }
+      actionHref = `/paint?wallRef=${encodeURIComponent(base.cid)}&wx=${refBounds.x}&wy=${refBounds.y}&ww=${refBounds.w}&wh=${refBounds.h}`
+      actionLabel = 'TAG THIS'
+    }
 
     const overlay = document.createElement('div')
     overlay.className = 'wall-overlay'
@@ -308,7 +318,7 @@ class WallScroll extends HTMLElement {
         <span class="overlay-author">${shortId}</span>
         <span class="overlay-time">${timeStr}</span>
         ${base.caption ? `<p class="overlay-caption">${escapeHtml(base.caption)}</p>` : ''}
-        <a class="overlay-action" href="${tagHref}">TAG THIS</a>
+        <a class="overlay-action" href="${actionHref}">${actionLabel}</a>
       </div>
     `
 

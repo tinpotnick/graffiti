@@ -87,7 +87,7 @@ class AppShell extends HTMLElement {
 
   private renderRoute(pathname: string) {
     const routeTag = this.resolveRoute(pathname);
-    const cacheable = routeTag !== "view-post";
+    const cacheable = routeTag !== "view-post" && routeTag !== "view-paint";
 
     // Hide current view
     if (this.activeView) {
