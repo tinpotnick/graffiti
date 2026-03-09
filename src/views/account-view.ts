@@ -384,15 +384,18 @@ class AccountView extends HTMLElement {
     try {
       this._peerId = await getMyPeerId()
 
-      // Replace placeholder with real canvas
-      const canvas = document.createElement('canvas')
-      canvas.id = 'qr-canvas'
-      await QRCode.toCanvas(canvas, this._peerId, {
+      // Replace placeholder with an <img> (canvas loses content when display:none)
+      const dataUrl = await QRCode.toDataURL(this._peerId, {
         width: 200,
         margin: 2,
         color: { dark: '#0b0b0b', light: '#fafafa' },
       })
-      placeholder.replaceWith(canvas)
+      const img = document.createElement('img')
+      img.id = 'qr-canvas'
+      img.width = 200
+      img.height = 200
+      img.src = dataUrl
+      placeholder.replaceWith(img)
 
       codeEl.textContent = this._peerId
       codeEl.classList.remove('empty')
