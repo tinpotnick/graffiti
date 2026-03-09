@@ -58,6 +58,7 @@ const STYLES = `
 `
 
 const REFRESH_INTERVAL = 30 * 60 * 1000 // 30 minutes
+const PAGE_SIZE = 20
 
 class HomeView extends HTMLElement {
   private _root!: ShadowRoot
@@ -66,6 +67,8 @@ class HomeView extends HTMLElement {
   private _viewMode: 'feed' | 'wall' = 'wall'
   private _loading = true
   private _refreshTimer: ReturnType<typeof setInterval> | null = null
+  private _renderedCount = 0
+  private _feedObserver: IntersectionObserver | null = null
 
   connectedCallback() {
     if (this.shadowRoot) return
@@ -183,6 +186,7 @@ class HomeView extends HTMLElement {
       return
     }
 
+    this._disconnectFeedObserver()
     content.innerHTML = ''
 
     if (this._viewMode === 'wall') {
@@ -193,13 +197,48 @@ class HomeView extends HTMLElement {
     } else {
       const feed = document.createElement('div')
       feed.className = 'feed-list'
-      for (const post of this._posts) {
-        const item = document.createElement('feed-item') as FeedItemElement
-        item.myPeerId = this._myPeerId
-        item.post = post
-        feed.appendChild(item)
-      }
       content.appendChild(feed)
+
+      this._renderedCount = 0
+      this._appendFeedPage(feed)
+
+      if (this._renderedCount < this._posts.length) {
+        const sentinel = document.createElement('div')
+        sentinel.className = 'status'
+        sentinel.textContent = 'LOADING MORE…'
+        content.appendChild(sentinel)
+
+        this._feedObserver = new IntersectionObserver(
+          (entries) => {
+            if (!entries[0].isIntersecting) return
+            this._appendFeedPage(feed)
+            if (this._renderedCount >= this._posts.length) {
+              this._disconnectFeedObserver()
+              sentinel.remove()
+            }
+          },
+          { root: null, rootMargin: '200px 0px' }
+        )
+        this._feedObserver.observe(sentinel)
+      }
+    }
+  }
+
+  private _appendFeedPage(feed: HTMLElement) {
+    const end = Math.min(this._renderedCount + PAGE_SIZE, this._posts.length)
+    for (let i = this._renderedCount; i < end; i++) {
+      const item = document.createElement('feed-item') as FeedItemElement
+      item.myPeerId = this._myPeerId
+      item.post = this._posts[i]
+      feed.appendChild(item)
+    }
+    this._renderedCount = end
+  }
+
+  private _disconnectFeedObserver() {
+    if (this._feedObserver) {
+      this._feedObserver.disconnect()
+      this._feedObserver = null
     }
   }
 }
