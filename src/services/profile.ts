@@ -10,7 +10,7 @@
  * to IPNS on every change.
  */
 
-import { addBytes, getNodeId, publish, resolve, catJson } from './ipfs'
+import { addBytes, addJson, getNodeId, publish, resolve, catJson, serializeIPNSRecord, type IPNSRecord } from './ipfs'
 import { pinFile } from './pinning'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -19,6 +19,10 @@ export interface WallPost {
   cid: string
   timestamp: number
   caption: string
+  /** Post type — 'text' for markdown posts, undefined/'wall' for pixel art. */
+  type?: 'wall' | 'text'
+  /** Title for text posts (kept in manifest for feed snippets). */
+  title?: string
   /** Top-left X of the cropped image on the 320×180 wall */
   x?: number
   /** Top-left Y of the cropped image on the 320×180 wall */
@@ -42,6 +46,8 @@ export interface WallManifest {
   wall: WallPost[]
   /** PeerIDs of followed users. */
   following: string[]
+  /** Cached signed IPNS records for followed peers (peerId → base64 marshaled record). */
+  peerRecords?: Record<string, string>
   updatedAt: number
 }
 
@@ -89,6 +95,37 @@ function _getCachedTagPng(): Uint8Array | null {
     const bytes = new Uint8Array(b.length)
     for (let i = 0; i < b.length; i++) bytes[i] = b.charCodeAt(i)
     return bytes
+  } catch { return null }
+}
+
+// ── IPNS record cache ────────────────────────────────────────────────────────
+// Cached signed IPNS records for followed peers — survives resolution failures.
+
+const IPNS_CACHE_PREFIX = 'graffiti:ipns-cache:'
+
+interface CachedResolution {
+  /** base64-encoded marshaled signed IPNS record */
+  record: string
+  /** CID the record resolved to */
+  cid: string
+  /** When we last successfully resolved this peer (epoch ms) */
+  resolvedAt: number
+}
+
+function _cacheIPNSRecord(peerId: string, cid: string, record: IPNSRecord): void {
+  const entry: CachedResolution = {
+    record: serializeIPNSRecord(record),
+    cid,
+    resolvedAt: Date.now(),
+  }
+  try { localStorage.setItem(IPNS_CACHE_PREFIX + peerId, JSON.stringify(entry)) } catch { /* unavailable */ }
+}
+
+function _getCachedIPNSRecord(peerId: string): CachedResolution | null {
+  try {
+    const s = localStorage.getItem(IPNS_CACHE_PREFIX + peerId)
+    if (!s) return null
+    return JSON.parse(s) as CachedResolution
   } catch { return null }
 }
 
@@ -158,9 +195,48 @@ export async function publishWallPost(
   return manifestCid
 }
 
+/**
+ * Publish a text/markdown post to IPFS/IPNS.
+ * Stores the markdown body in IPFS as a standalone CID;
+ * the manifest only keeps the CID, title, and a short caption snippet.
+ */
+export async function publishTextPost(title: string, markdown: string): Promise<string> {
+  const postCid = await addJson({ title, markdown })
+  const snippetBytes = new TextEncoder().encode(JSON.stringify({ title, markdown }))
+  pinFile(snippetBytes, `post-${postCid.slice(-8)}.json`, postCid).catch(e => console.warn('[profile] text post pin failed:', e))
+
+  const manifest = loadManifest()
+  const caption = markdown.replace(/[#*_`>\[\]!\-]/g, '').trim().slice(0, 140)
+  const post: WallPost = {
+    cid: postCid,
+    timestamp: Date.now(),
+    caption,
+    type: 'text',
+    title,
+  }
+  manifest.wall = [post, ...manifest.wall]
+  manifest.updatedAt = Date.now()
+
+  const manifestCid = await _publishManifest(manifest)
+  _saveManifest(manifest)
+  return manifestCid
+}
+
 // ── Internal: publish manifest to IPFS + IPNS ────────────────────────────────
 
 async function _publishManifest(manifest: WallManifest): Promise<string> {
+  // Embed cached IPNS records for followed peers (gossip hints for other followers)
+  const peerRecords: Record<string, string> = {}
+  for (const peerId of manifest.following) {
+    const cached = _getCachedIPNSRecord(peerId)
+    if (cached) peerRecords[peerId] = cached.record
+  }
+  if (Object.keys(peerRecords).length > 0) {
+    manifest.peerRecords = peerRecords
+  } else {
+    delete manifest.peerRecords
+  }
+
   const manifestBytes = new TextEncoder().encode(JSON.stringify(manifest, null, 2))
   const manifestCid = await addBytes(manifestBytes)
   // Pin manifest + publish to IPNS — both fire-and-forget
@@ -181,25 +257,58 @@ export async function followPeer(peerId: string): Promise<void> {
   _publishManifest(manifest).catch(e => console.warn('[profile] republish after follow failed:', e))
 }
 
+/** Result of resolving a followed peer — includes staleness metadata. */
+export interface PeerResolution {
+  manifest: WallManifest
+  /** True when the result came from a cached IPNS record (may be outdated). */
+  stale: boolean
+  /** When the IPNS record was last successfully resolved (epoch ms). */
+  resolvedAt: number
+}
+
+/** Fetch a manifest from a CID, trying flat JSON then legacy directory format. */
+async function _fetchManifest(cid: string): Promise<WallManifest | null> {
+  try {
+    return await catJson<WallManifest>(cid)
+  } catch {
+    console.info('[profile] Flat fetch failed, trying legacy directory format')
+    try {
+      return await catJson<WallManifest>(cid, 'manifest.json')
+    } catch {
+      return null
+    }
+  }
+}
+
 /**
  * Resolve a followed peer's IPNS name and fetch their manifest.
- * Returns null if resolution fails (peer offline, no record, timeout).
+ * Caches the signed IPNS record on success; falls back to cache on failure.
+ * Returns null only if both live resolution and cache miss.
  */
-export async function resolveFollowedPeer(peerId: string): Promise<WallManifest | null> {
+export async function resolveFollowedPeer(peerId: string): Promise<PeerResolution | null> {
+  // 1. Try live IPNS resolution
   try {
-    const rootCid = await resolve(peerId)
-    try {
-      // Current format: IPNS → flat manifest JSON
-      return await catJson<WallManifest>(rootCid)
-    } catch {
-      // Legacy format: IPNS → directory containing manifest.json
-      console.info('[profile] Flat fetch failed, trying legacy directory format for', peerId)
-      return await catJson<WallManifest>(rootCid, 'manifest.json')
-    }
+    const { cid, record } = await resolve(peerId)
+    _cacheIPNSRecord(peerId, cid, record)
+    const manifest = await _fetchManifest(cid)
+    if (manifest) return { manifest, stale: false, resolvedAt: Date.now() }
   } catch (err) {
-    console.warn('[profile] Failed to resolve peer', peerId, err)
-    return null
+    console.warn('[profile] Live IPNS resolution failed for', peerId, err)
   }
+
+  // 2. Fall back to local cache
+  const cached = _getCachedIPNSRecord(peerId)
+  if (cached) {
+    console.info('[profile] Using cached IPNS record for', peerId, '(resolved', new Date(cached.resolvedAt).toISOString(), ')')
+    try {
+      const manifest = await _fetchManifest(cached.cid)
+      if (manifest) return { manifest, stale: true, resolvedAt: cached.resolvedAt }
+    } catch {
+      console.warn('[profile] Cached CID fetch also failed for', peerId)
+    }
+  }
+
+  return null
 }
 
 /** Remove a peer from the following list and persist locally. */
@@ -208,4 +317,5 @@ export function unfollowPeer(peerId: string): void {
   manifest.following = manifest.following.filter(id => id !== peerId)
   manifest.updatedAt = Date.now()
   _saveManifest(manifest)
+  try { localStorage.removeItem(IPNS_CACHE_PREFIX + peerId) } catch { /* unavailable */ }
 }

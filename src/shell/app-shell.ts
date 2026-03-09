@@ -1,6 +1,6 @@
 import { initHelia } from "../services/ipfs";
 
-type ViewTag = "view-home" | "view-create" | "view-paint" | "view-account";
+type ViewTag = "view-home" | "view-create" | "view-paint" | "view-account" | "view-post";
 
 const template = document.createElement("template");
 template.innerHTML = `
@@ -100,6 +100,8 @@ class AppShell extends HTMLElement {
         return "view-paint";
       case "/account":
         return "view-account";
+      case "/post":
+        return "view-post";
       default:
         return "view-home";
     }

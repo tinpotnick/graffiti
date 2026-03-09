@@ -1,3 +1,5 @@
+import { publishTextPost } from '../services/profile'
+
 type MdEditorElement = HTMLElement & { value: string };
 type EditorChangeEvent = CustomEvent<{ value: string }>;
 
@@ -90,9 +92,24 @@ Type *markdown* here.
       this.markdown = detail?.value ?? "";
     };
 
-    this.onPublish = () => {
+    this.onPublish = async () => {
       this.postTitle = this.titleInput?.value ?? "";
-      console.log({ title: this.postTitle, body: this.markdown });
+      if (!this.postTitle && !this.markdown.trim()) return;
+      this.publishButton?.setAttribute("disabled", "");
+      try {
+        await publishTextPost(this.postTitle, this.markdown);
+        this.postTitle = "";
+        this.markdown = "";
+        if (this.titleInput) this.titleInput.value = "";
+        if (this.editor) this.editor.value = "";
+        try { localStorage.setItem("graffiti:home-view-mode", "feed"); } catch {}
+        window.history.pushState({}, "", "/");
+        window.dispatchEvent(new PopStateEvent("popstate"));
+      } catch (err) {
+        console.error("[create] publish failed:", err);
+      } finally {
+        this.publishButton?.removeAttribute("disabled");
+      }
     };
   }
 

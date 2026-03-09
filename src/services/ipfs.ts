@@ -21,6 +21,7 @@ import { IDBBlockstore } from 'blockstore-idb'
 import { IDBDatastore } from 'datastore-idb'
 import { CID } from 'multiformats/cid'
 import { peerIdFromString } from '@libp2p/peer-id'
+import { marshalIPNSRecord, unmarshalIPNSRecord, type IPNSRecord } from 'ipns'
 import { getPinataGateway } from './pinning'
 
 // ── Singleton ──────────────────────────────────────────────────────────────────
@@ -199,14 +200,43 @@ export async function publish(cid: string): Promise<string> {
   return h.libp2p.peerId.toString()
 }
 
+// ── IPNS record serialisation ────────────────────────────────────────────────
+
+/** Serialise a signed IPNS record to a base64 string (for localStorage / manifest). */
+export function serializeIPNSRecord(record: IPNSRecord): string {
+  const bytes = marshalIPNSRecord(record)
+  let b = ''
+  for (let i = 0; i < bytes.length; i++) b += String.fromCharCode(bytes[i])
+  return btoa(b)
+}
+
+/** Deserialise a base64-encoded IPNS record back to an IPNSRecord. */
+export function deserializeIPNSRecord(base64: string): IPNSRecord {
+  const b = atob(base64)
+  const bytes = new Uint8Array(b.length)
+  for (let i = 0; i < b.length; i++) bytes[i] = b.charCodeAt(i)
+  return unmarshalIPNSRecord(bytes)
+}
+
+export { type IPNSRecord } from 'ipns'
+
+/**
+ * Result of resolving an IPNS name — includes the signed record for caching.
+ */
+export interface ResolveResult {
+  cid: string
+  record: IPNSRecord
+}
+
 /**
  * Resolve an IPNS name (PeerID string) to a CID string via PubSub + DHT.
  * Times out after 30 seconds if the peer has never published.
+ * Returns the CID and the signed IPNS record (for caching / sharing).
  */
-export async function resolve(peerId: string): Promise<string> {
+export async function resolve(peerId: string): Promise<ResolveResult> {
   const name = await _getName()
   const pid = peerIdFromString(peerId)
-  const { cid } = await name.resolve(pid, { signal: AbortSignal.timeout(30_000) })
+  const { cid, record } = await name.resolve(pid, { signal: AbortSignal.timeout(30_000) })
   console.info('[ipfs] IPNS resolved', peerId, '->', cid.toString())
-  return cid.toString()
+  return { cid: cid.toString(), record }
 }

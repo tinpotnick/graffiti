@@ -71,13 +71,13 @@ template.innerHTML = `
       transform: translateY(0);
       filter: brightness(0.97);
     }
-    .nav-button.active:not(.create) {
+    .nav-button.active {
       background: var(--accent);
       color: var(--text-inverse);
       border-color: var(--nav-active-border);
       box-shadow: var(--shadow-btn-active);
     }
-    .nav-button.create {
+    .nav-button.create.active {
       background: var(--accent);
       color: var(--text-inverse);
       border: 1px solid var(--nav-active-border);

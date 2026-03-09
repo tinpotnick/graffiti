@@ -27,9 +27,12 @@
     "@libp2p/peer-id": "^5.0.0",
     "blockstore-idb": "^3.0.0",
     "datastore-idb": "^4.0.0",
-    "multiformats": "^13.0.0"
+    "ipns": "^10.1.2",
+    "multiformats": "^13.0.0",
+    "markdown-it": "^14.1.0"
   },
   "devDependencies": {
+    "@types/markdown-it": "^14.1.2",
     "@tauri-apps/cli": "^2",
     "typescript": "~5.6.2",
     "vite": "^6.0.3",

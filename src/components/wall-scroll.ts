@@ -199,8 +199,9 @@ class WallScroll extends HTMLElement {
    * with all tags from anyone composited on top.
    */
   private _buildWallStates(posts: FeedPost[]): WallState[] {
-    const originals = posts.filter(p => !p.wallRef)
-    const tags = posts.filter(p => p.wallRef)
+    const wallPosts = posts.filter(p => p.type !== 'text')
+    const originals = wallPosts.filter(p => !p.wallRef)
+    const tags = wallPosts.filter(p => p.wallRef)
 
     // Keep only the latest original wall per user
     const latestByUser = new Map<string, FeedPost>()

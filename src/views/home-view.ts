@@ -113,6 +113,8 @@ class HomeView extends HTMLElement {
         timestamp: p.timestamp,
         peerId: myPeerId,
         tagCid: manifest.tag,
+        type: p.type,
+        title: p.title,
         bounds: p.x != null ? { x: p.x, y: p.y!, w: p.w!, h: p.h! } : undefined,
         wallRef: p.wallRef,
         wallBounds: p.wallBounds,
@@ -121,17 +123,21 @@ class HomeView extends HTMLElement {
       // Resolve followed peers in parallel
       const peerResults = await Promise.all(
         manifest.following.map(async (peerId) => {
-          const peerManifest = await resolveFollowedPeer(peerId)
-          if (!peerManifest) return []
-          return peerManifest.wall.map(p => ({
+          const result = await resolveFollowedPeer(peerId)
+          if (!result) return []
+          return result.manifest.wall.map(p => ({
             cid: p.cid,
             caption: p.caption,
             timestamp: p.timestamp,
             peerId,
-            tagCid: peerManifest.tag,
+            tagCid: result.manifest.tag,
+            type: p.type,
+            title: p.title,
             bounds: p.x != null ? { x: p.x, y: p.y!, w: p.w!, h: p.h! } : undefined,
             wallRef: p.wallRef,
             wallBounds: p.wallBounds,
+            stale: result.stale,
+            resolvedAt: result.resolvedAt,
           }))
         })
       )
