@@ -57,12 +57,15 @@ const STYLES = `
   }
 `
 
+const REFRESH_INTERVAL = 30 * 60 * 1000 // 30 minutes
+
 class HomeView extends HTMLElement {
   private _root!: ShadowRoot
   private _posts: FeedPost[] = []
   private _myPeerId = ''
   private _viewMode: 'feed' | 'wall' = 'wall'
   private _loading = true
+  private _refreshTimer: ReturnType<typeof setInterval> | null = null
 
   connectedCallback() {
     if (this.shadowRoot) return
@@ -81,6 +84,7 @@ class HomeView extends HTMLElement {
     this._updateToggle()
     this._bindToggle()
     this._loadFeed()
+    this._refreshTimer = setInterval(() => this._loadFeed(), REFRESH_INTERVAL)
 
     // Re-fetch feed when navigating back to home (cached SPA view)
     window.addEventListener('route-change', (e: Event) => {
