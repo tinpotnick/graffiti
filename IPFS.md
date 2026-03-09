@@ -8,18 +8,28 @@ Every user runs an in-browser IPFS node ([Helia](https://github.com/ipfs/helia))
 
 Identity is the node's Ed25519 keypair. The PeerID derived from this key doubles as the user's IPNS name — a stable address that always resolves to their latest content.
 
-## Content model
+## Content model (v2)
 
 ```
 IPNS name (PeerID)
-  └─► manifest CID (JSON file)
-        ├── tag: "<CID>"          ← 64×64 avatar PNG
-        ├── wall: [{ cid, … }]   ← wall post PNGs
+  └─► root manifest CID (small JSON, ~1KB)
+        ├── tag: "<CID>"                    ← 64×64 avatar PNG
+        ├── posts: { "2026-03": "<CID>", …} ← CID pointers to monthly post buckets
+        ├── likes: { "2026-03": "<CID>", …} ← CID pointers to monthly like buckets
         ├── following: ["<PeerID>", …]
-        └── displayName, updatedAt, version
+        └── displayName, updatedAt, version: 2
+
+Monthly post bucket (e.g. posts/2026-03):
+  { month: "2026-03", posts: [{ cid, timestamp, caption, … }] }
+
+Monthly like bucket (e.g. likes/2026-03):
+  { month: "2026-03", likes: [{ target, author, timestamp, strength }] }
+  strength: 1 = like, 2 = really like (mutually exclusive)
 ```
 
-IPNS points directly to a single JSON manifest. The manifest references images by their individual CIDs. There is no directory wrapping — every piece of content is a standalone CID.
+IPNS points to a small root manifest containing CID pointers to monthly bucket files. When a like is added, only the affected month's bucket and the root manifest are re-published — peers who already have older months cached don't need to re-fetch them (same CIDs, content-addressed and immutable).
+
+There is no directory wrapping — every piece of content is a standalone CID.
 
 ### Why flat CIDs, not a UnixFS directory
 

@@ -1,4 +1,10 @@
-import { loadManifest, getMyPeerId, resolveFollowedPeer } from '../services/profile'
+import {
+  loadManifest, getMyPeerId, resolveFollowedPeer,
+  fetchPeerPostBuckets, fetchPeerInteractions,
+  recentMonths, getAllMyPosts, getAllMyLikes,
+  likePost, unlikePost,
+} from '../services/profile'
+import type { LikeRecord, ResolvedManifest } from '../services/profile'
 import type { FeedPost } from '../components/feed-item'
 import type { WallScrollElement } from '../components/wall-scroll'
 
@@ -86,6 +92,7 @@ class HomeView extends HTMLElement {
     `
     this._updateToggle()
     this._bindToggle()
+    this._bindInteractions()
     this._loadFeed()
     this._refreshTimer = setInterval(() => this._loadFeed(), REFRESH_INTERVAL)
 
@@ -115,14 +122,54 @@ class HomeView extends HTMLElement {
     })
   }
 
+  private _bindInteractions() {
+    this._root.addEventListener('post-interact', (e: Event) => {
+      const { target, author, strength } = (e as CustomEvent).detail as {
+        target: string; author: string; strength: 0 | 1 | 2
+      }
+
+      // Optimistic UI update — build new state from each item's own current state
+      this._root.querySelectorAll('feed-item').forEach((el) => {
+        const item = el as FeedItemElement
+        if (item.post.cid !== target) return
+        const prev = item.post
+        const oldStr = prev.myInteraction ?? 0
+        item.post = {
+          ...prev,
+          myInteraction: strength,
+          likeCount: Math.max(0, (prev.likeCount ?? 0) - (oldStr === 1 ? 1 : 0) + (strength === 1 ? 1 : 0)),
+          reallyLikeCount: Math.max(0, (prev.reallyLikeCount ?? 0) - (oldStr === 2 ? 1 : 0) + (strength === 2 ? 1 : 0)),
+        }
+      })
+
+      // Keep this._posts in sync for next full render
+      for (const post of this._posts) {
+        if (post.cid === target) post.myInteraction = strength
+      }
+
+      // Persist to IPFS in background
+      const op = strength === 0
+        ? unlikePost(target)
+        : likePost(target, author, strength)
+      op.catch(err => console.warn('[home] Interaction publish failed:', err))
+    })
+  }
+
   private async _loadFeed() {
     try {
       const manifest = loadManifest()
       const myPeerId = await getMyPeerId()
       this._myPeerId = myPeerId
+      const months = recentMonths(3)
 
-      // Own posts
-      const posts: FeedPost[] = manifest.wall.map(p => ({
+      // ── Own data ──
+      const myPosts = getAllMyPosts()
+      const myLikes = getAllMyLikes()
+      const myLikeMap = new Map<string, LikeRecord>()
+      for (const l of myLikes) myLikeMap.set(l.target, l)
+
+      // Build FeedPost[] from own posts
+      const posts: FeedPost[] = myPosts.map(p => ({
         cid: p.cid,
         caption: p.caption,
         timestamp: p.timestamp,
@@ -133,31 +180,106 @@ class HomeView extends HTMLElement {
         bounds: p.x != null ? { x: p.x, y: p.y!, w: p.w!, h: p.h! } : undefined,
         wallRef: p.wallRef,
         wallBounds: p.wallBounds,
+        myInteraction: (myLikeMap.get(p.cid)?.strength ?? 0) as 0 | 1 | 2,
       }))
 
-      // Resolve followed peers in parallel
+      // ── Interaction counts ──
+      const interactionCounts = new Map<string, { likes: number; reallyLikes: number }>()
+      const allReallyLikes: Array<LikeRecord & { byPeerId: string; byTagCid: string }> = []
+
+      // Count own likes
+      for (const l of myLikes) {
+        const c = interactionCounts.get(l.target) ?? { likes: 0, reallyLikes: 0 }
+        if (l.strength === 1) c.likes++
+        else c.reallyLikes++
+        interactionCounts.set(l.target, c)
+      }
+
+      // ── Resolve peers ──
       const peerResults = await Promise.all(
         manifest.following.map(async (peerId) => {
           const result = await resolveFollowedPeer(peerId)
-          if (!result) return []
-          return result.manifest.wall.map(p => ({
+          if (!result) return null
+          const peerManifest = result.manifest
+
+          const inlinePosts = (peerManifest as ResolvedManifest)._inlinePosts
+          const [peerPosts, peerInteractions] = await Promise.all([
+            inlinePosts
+              ? Promise.resolve(inlinePosts)
+              : fetchPeerPostBuckets(peerManifest, months),
+            fetchPeerInteractions(peerManifest, months),
+          ])
+
+          return {
+            peerId,
+            tagCid: peerManifest.tag,
+            posts: peerPosts,
+            interactions: peerInteractions,
+            stale: result.stale,
+            resolvedAt: result.resolvedAt,
+          }
+        })
+      )
+
+      for (const pr of peerResults) {
+        if (!pr) continue
+
+        // Add peer posts to feed
+        for (const p of pr.posts) {
+          posts.push({
             cid: p.cid,
             caption: p.caption,
             timestamp: p.timestamp,
-            peerId,
-            tagCid: result.manifest.tag,
+            peerId: pr.peerId,
+            tagCid: pr.tagCid,
             type: p.type,
             title: p.title,
             bounds: p.x != null ? { x: p.x, y: p.y!, w: p.w!, h: p.h! } : undefined,
             wallRef: p.wallRef,
             wallBounds: p.wallBounds,
-            stale: result.stale,
-            resolvedAt: result.resolvedAt,
-          }))
-        })
-      )
-      for (const peerPosts of peerResults) {
-        posts.push(...peerPosts)
+            stale: pr.stale,
+            resolvedAt: pr.resolvedAt,
+            myInteraction: (myLikeMap.get(p.cid)?.strength ?? 0) as 0 | 1 | 2,
+          })
+        }
+
+        // Aggregate interaction counts
+        for (const l of pr.interactions.likes) {
+          const c = interactionCounts.get(l.target) ?? { likes: 0, reallyLikes: 0 }
+          if (l.strength === 1) c.likes++
+          else c.reallyLikes++
+          interactionCounts.set(l.target, c)
+
+          if (l.strength === 2) {
+            allReallyLikes.push({
+              ...l,
+              byPeerId: pr.peerId,
+              byTagCid: pr.tagCid,
+            })
+          }
+        }
+      }
+
+      // ── Inject really-likes as feed items (repost-style) ──
+      for (const rl of allReallyLikes) {
+        const original = posts.find(p => p.cid === rl.target)
+        if (original) {
+          posts.push({
+            ...original,
+            timestamp: rl.timestamp,
+            reallyLikedBy: rl.byPeerId,
+            reallyLikedByTagCid: rl.byTagCid,
+          })
+        }
+      }
+
+      // ── Apply interaction counts to all posts ──
+      for (const post of posts) {
+        const counts = interactionCounts.get(post.cid)
+        if (counts) {
+          post.likeCount = counts.likes
+          post.reallyLikeCount = counts.reallyLikes
+        }
       }
 
       // Sort newest first

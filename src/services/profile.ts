@@ -1,13 +1,14 @@
 /**
- * Profile service — manages the user's WallManifest and publishes content to IPFS/IPNS.
+ * Profile service — manages the user's manifest and publishes content to IPFS/IPNS.
  *
- * Content model:
- *   IPNS name → manifest CID (a single JSON file, not a directory)
- *   manifest.json contains CID references to tag.png and wall post images
+ * Content model (v2):
+ *   IPNS name → root manifest CID (small JSON with CID pointers)
+ *     → monthly post buckets (CID → JSON file per year-month)
+ *     → monthly like buckets (CID → JSON file per year-month)
  *
- * All images (tag, wall posts) are pinned as standalone CIDs.
- * The manifest is re-serialised, added to IPFS, pinned, and re-published
- * to IPNS on every change.
+ * The root manifest is small (~1KB). Monthly buckets are only re-published
+ * when their contents change, so a single like doesn't force peers to
+ * re-download all posts.
  */
 
 import { addBytes, addJson, getNodeId, publish, resolve, catJson, serializeIPNSRecord, type IPNSRecord } from './ipfs'
@@ -37,19 +38,61 @@ export interface WallPost {
   wallBounds?: { x: number; y: number; w: number; h: number }
 }
 
-export interface WallManifest {
+/** Year-month key, e.g. "2026-03" */
+type YearMonth = string
+
+/** Maps year-month keys to CIDs of monthly JSON files. */
+type BucketIndex = Record<YearMonth, string>
+
+export interface LikeRecord {
+  /** CID of the liked content. */
+  target: string
+  /** PeerID of the original content author. */
+  author: string
+  timestamp: number
+  /** 1 = like, 2 = really like. Mutually exclusive (strength score). */
+  strength: 1 | 2
+}
+
+export interface PostsBucket {
+  month: YearMonth
+  posts: WallPost[]
+}
+
+export interface LikesBucket {
+  month: YearMonth
+  likes: LikeRecord[]
+}
+
+/** v1 manifest — kept for migration and remote peer compat. */
+interface WallManifestV1 {
   version: 1
+  displayName: string
+  tag: string
+  wall: WallPost[]
+  following: string[]
+  peerRecords?: Record<string, string>
+  updatedAt: number
+}
+
+export interface WallManifest {
+  version: 2
   displayName: string
   /** CID of the latest tag.png, empty string if not yet published. */
   tag: string
-  /** Wall posts, newest first. */
-  wall: WallPost[]
   /** PeerIDs of followed users. */
   following: string[]
+  /** CID pointers to monthly post files, keyed by year-month. */
+  posts: BucketIndex
+  /** CID pointers to monthly like files, keyed by year-month. */
+  likes: BucketIndex
   /** Cached signed IPNS records for followed peers (peerId → base64 marshaled record). */
   peerRecords?: Record<string, string>
   updatedAt: number
 }
+
+/** Manifest with inline posts — used when converting remote v1 peers for read-only display. */
+export type ResolvedManifest = WallManifest & { _inlinePosts?: WallPost[] }
 
 // ── localStorage keys ─────────────────────────────────────────────────────────
 
@@ -57,17 +100,53 @@ const MANIFEST_KEY = 'graffiti:manifest'
 const PEER_ID_KEY  = 'graffiti:peer-id'
 /** base64-encoded bytes of the most recently published tag.png */
 const TAG_PNG_KEY  = 'graffiti:tag-png'
+const BUCKET_PREFIX = 'graffiti:bucket:'
+
+// ── Year-month helper ─────────────────────────────────────────────────────────
+
+function yearMonth(ts: number = Date.now()): YearMonth {
+  const d = new Date(ts)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+}
+
+/** Return the current month and the N-1 preceding months as YearMonth strings. */
+export function recentMonths(count: number = 2): YearMonth[] {
+  const result: YearMonth[] = []
+  const now = new Date()
+  for (let i = 0; i < count; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
+    result.push(yearMonth(d.getTime()))
+  }
+  return result
+}
+
+// ── Bucket localStorage helpers ───────────────────────────────────────────────
+
+function _saveBucket<T>(kind: 'posts' | 'likes', month: YearMonth, data: T): void {
+  try { localStorage.setItem(`${BUCKET_PREFIX}${kind}:${month}`, JSON.stringify(data)) } catch { /* unavailable */ }
+}
+
+function _loadBucket<T>(kind: 'posts' | 'likes', month: YearMonth): T | null {
+  try {
+    const s = localStorage.getItem(`${BUCKET_PREFIX}${kind}:${month}`)
+    return s ? JSON.parse(s) as T : null
+  } catch { return null }
+}
 
 // ── Manifest cache ────────────────────────────────────────────────────────────
 
 function emptyManifest(): WallManifest {
-  return { version: 1, displayName: '', tag: '', wall: [], following: [], updatedAt: 0 }
+  return { version: 2, displayName: '', tag: '', following: [], posts: {}, likes: {}, updatedAt: 0 }
 }
 
 export function loadManifest(): WallManifest {
   try {
     const s = localStorage.getItem(MANIFEST_KEY)
-    if (s) return JSON.parse(s) as WallManifest
+    if (s) {
+      const raw = JSON.parse(s)
+      if (raw.version === 1) return _migrateV1toV2(raw as WallManifestV1)
+      return raw as WallManifest
+    }
   } catch { /* unavailable */ }
   return emptyManifest()
 }
@@ -76,8 +155,40 @@ function _saveManifest(m: WallManifest): void {
   try { localStorage.setItem(MANIFEST_KEY, JSON.stringify(m)) } catch { /* unavailable */ }
 }
 
+/** Migrate a v1 manifest to v2 shape. Groups wall[] by month into localStorage buckets. */
+function _migrateV1toV2(v1: WallManifestV1): WallManifest {
+  // Group existing posts by month
+  const postsByMonth = new Map<YearMonth, WallPost[]>()
+  for (const post of v1.wall) {
+    const ym = yearMonth(post.timestamp)
+    const arr = postsByMonth.get(ym) ?? []
+    arr.push(post)
+    postsByMonth.set(ym, arr)
+  }
+
+  // Store raw monthly post data in localStorage — CIDs assigned on next publish
+  for (const [month, posts] of postsByMonth) {
+    const bucket: PostsBucket = { month, posts }
+    _saveBucket('posts', month, bucket)
+  }
+
+  const v2: WallManifest = {
+    version: 2,
+    displayName: v1.displayName,
+    tag: v1.tag,
+    following: v1.following,
+    posts: {},   // CIDs assigned on first publish via _ensureBucketsCidified
+    likes: {},
+    peerRecords: v1.peerRecords,
+    updatedAt: v1.updatedAt,
+  }
+
+  _saveManifest(v2)
+  console.info('[profile] Migrated manifest v1 → v2, grouped', postsByMonth.size, 'months of posts')
+  return v2
+}
+
 // ── Tag PNG byte cache ────────────────────────────────────────────────────────
-// We cache tag.png bytes locally so publishTag can pin them without re-fetching.
 
 function _cacheTagPng(png: Uint8Array): void {
   try {
@@ -99,7 +210,6 @@ function _getCachedTagPng(): Uint8Array | null {
 }
 
 // ── IPNS record cache ────────────────────────────────────────────────────────
-// Cached signed IPNS records for followed peers — survives resolution failures.
 
 const IPNS_CACHE_PREFIX = 'graffiti:ipns-cache:'
 
@@ -140,12 +250,62 @@ export async function getMyPeerId(): Promise<string> {
   return node.id
 }
 
+// ── Bucket IPFS publishing ────────────────────────────────────────────────────
+
+/** Serialize a monthly bucket to IPFS and pin. Returns CID string. */
+async function _publishBucket(kind: 'posts' | 'likes', month: YearMonth, data: unknown): Promise<string> {
+  const json = JSON.stringify(data, null, 2)
+  const bytes = new TextEncoder().encode(json)
+  const cid = await addBytes(bytes)
+  pinFile(bytes, `${kind}-${month}.json`, cid).catch(e =>
+    console.warn(`[profile] ${kind} bucket pin failed:`, e)
+  )
+  return cid
+}
+
+/**
+ * Ensure all localStorage buckets have CIDs in the manifest.
+ * Called during publish to catch migration leftovers (v1→v2 creates buckets without CIDs).
+ */
+async function _ensureBucketsCidified(manifest: WallManifest): Promise<boolean> {
+  let changed = false
+
+  // Scan localStorage for post buckets without manifest CID entries
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i)
+    if (!key) continue
+
+    if (key.startsWith(`${BUCKET_PREFIX}posts:`)) {
+      const month = key.slice(`${BUCKET_PREFIX}posts:`.length)
+      if (!manifest.posts[month]) {
+        const bucket = _loadBucket<PostsBucket>('posts', month)
+        if (bucket && bucket.posts.length > 0) {
+          manifest.posts[month] = await _publishBucket('posts', month, bucket)
+          changed = true
+        }
+      }
+    }
+
+    if (key.startsWith(`${BUCKET_PREFIX}likes:`)) {
+      const month = key.slice(`${BUCKET_PREFIX}likes:`.length)
+      if (!manifest.likes[month]) {
+        const bucket = _loadBucket<LikesBucket>('likes', month)
+        if (bucket && bucket.likes.length > 0) {
+          manifest.likes[month] = await _publishBucket('likes', month, bucket)
+          changed = true
+        }
+      }
+    }
+  }
+
+  return changed
+}
+
 // ── Publish ───────────────────────────────────────────────────────────────────
 
 /**
  * Publish MY TAG (64×64 PNG) to IPFS/IPNS.
  * Pins the PNG, updates manifest.tag, and re-publishes the manifest.
- * Returns the manifest CID.
  */
 export async function publishTag(png: Uint8Array): Promise<string> {
   const tagCid = await addBytes(png)
@@ -162,9 +322,8 @@ export async function publishTag(png: Uint8Array): Promise<string> {
 }
 
 /**
- * Publish a THE WALL post to IPFS/IPNS.
- * Prepends the post to wall[] (newest first) and re-publishes the manifest.
- * Returns the manifest CID.
+ * Publish a wall post to IPFS/IPNS.
+ * Adds the post to the current month's posts bucket and re-publishes the manifest.
  */
 export async function publishWallPost(
   png: Uint8Array,
@@ -187,9 +346,16 @@ export async function publishWallPost(
     post.wallRef = wallRef.cid
     post.wallBounds = wallRef.bounds
   }
-  manifest.wall = [post, ...manifest.wall]
+
+  const month = yearMonth()
+  const bucket = _loadBucket<PostsBucket>('posts', month) ?? { month, posts: [] }
+  bucket.posts = [post, ...bucket.posts]
+
+  const bucketCid = await _publishBucket('posts', month, bucket)
+  manifest.posts[month] = bucketCid
   manifest.updatedAt = Date.now()
 
+  _saveBucket('posts', month, bucket)
   const manifestCid = await _publishManifest(manifest)
   _saveManifest(manifest)
   return manifestCid
@@ -198,7 +364,7 @@ export async function publishWallPost(
 /**
  * Publish a text/markdown post to IPFS/IPNS.
  * Stores the markdown body in IPFS as a standalone CID;
- * the manifest only keeps the CID, title, and a short caption snippet.
+ * the bucket keeps the CID, title, and a short caption snippet.
  */
 export async function publishTextPost(title: string, markdown: string): Promise<string> {
   const postCid = await addJson({ title, markdown })
@@ -214,17 +380,199 @@ export async function publishTextPost(title: string, markdown: string): Promise<
     type: 'text',
     title,
   }
-  manifest.wall = [post, ...manifest.wall]
+
+  const month = yearMonth()
+  const bucket = _loadBucket<PostsBucket>('posts', month) ?? { month, posts: [] }
+  bucket.posts = [post, ...bucket.posts]
+
+  const bucketCid = await _publishBucket('posts', month, bucket)
+  manifest.posts[month] = bucketCid
   manifest.updatedAt = Date.now()
 
+  _saveBucket('posts', month, bucket)
   const manifestCid = await _publishManifest(manifest)
   _saveManifest(manifest)
   return manifestCid
 }
 
+// ── Likes ─────────────────────────────────────────────────────────────────────
+
+/**
+ * Like or really-like a post. Strength: 1 = like, 2 = really like.
+ * If an existing interaction exists (any month), it is upgraded/downgraded.
+ * Returns the manifest CID, or empty string if no change was needed.
+ */
+export async function likePost(targetCid: string, authorPeerId: string, strength: 1 | 2): Promise<string> {
+  const manifest = loadManifest()
+
+  // Check for existing interaction across all months — remove if found
+  const existingMonth = _findInteractionMonth(manifest, targetCid)
+  if (existingMonth) {
+    const oldBucket = _loadBucket<LikesBucket>('likes', existingMonth)!
+    const existing = oldBucket.likes.find(l => l.target === targetCid)
+    if (existing && existing.strength === strength) {
+      return '' // Same strength, no-op
+    }
+    // Remove old interaction (will be replaced with new strength)
+    oldBucket.likes = oldBucket.likes.filter(l => l.target !== targetCid)
+    const oldCid = await _publishBucket('likes', existingMonth, oldBucket)
+    manifest.likes[existingMonth] = oldCid
+    _saveBucket('likes', existingMonth, oldBucket)
+  }
+
+  const month = yearMonth()
+  const bucket = _loadBucket<LikesBucket>('likes', month) ?? { month, likes: [] }
+
+  const record: LikeRecord = {
+    target: targetCid,
+    author: authorPeerId,
+    timestamp: Date.now(),
+    strength,
+  }
+  bucket.likes = [record, ...bucket.likes]
+
+  const bucketCid = await _publishBucket('likes', month, bucket)
+  manifest.likes[month] = bucketCid
+  manifest.updatedAt = Date.now()
+
+  _saveBucket('likes', month, bucket)
+  const manifestCid = await _publishManifest(manifest)
+  _saveManifest(manifest)
+  return manifestCid
+}
+
+/** Remove a like/really-like. Returns the manifest CID, or empty string if not found. */
+export async function unlikePost(targetCid: string): Promise<string> {
+  const manifest = loadManifest()
+  const month = _findInteractionMonth(manifest, targetCid)
+  if (!month) return ''
+
+  const bucket = _loadBucket<LikesBucket>('likes', month)!
+  bucket.likes = bucket.likes.filter(l => l.target !== targetCid)
+
+  const bucketCid = await _publishBucket('likes', month, bucket)
+  manifest.likes[month] = bucketCid
+  manifest.updatedAt = Date.now()
+
+  _saveBucket('likes', month, bucket)
+  const manifestCid = await _publishManifest(manifest)
+  _saveManifest(manifest)
+  return manifestCid
+}
+
+/** Find which month contains an interaction for a given target CID. */
+function _findInteractionMonth(manifest: WallManifest, targetCid: string): YearMonth | null {
+  for (const month of Object.keys(manifest.likes)) {
+    const bucket = _loadBucket<LikesBucket>('likes', month)
+    if (bucket && bucket.likes.some(l => l.target === targetCid)) return month
+  }
+  return null
+}
+
+// ── Local data getters (for own feed) ─────────────────────────────────────────
+
+/** Get own posts for the given months from localStorage. */
+export function getMyPosts(months: YearMonth[]): WallPost[] {
+  const posts: WallPost[] = []
+  for (const m of months) {
+    const bucket = _loadBucket<PostsBucket>('posts', m)
+    if (bucket) posts.push(...bucket.posts)
+  }
+  return posts
+}
+
+/** Get all own posts across all months from localStorage. */
+export function getAllMyPosts(): WallPost[] {
+  const posts: WallPost[] = []
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i)
+    if (!key?.startsWith(`${BUCKET_PREFIX}posts:`)) continue
+    try {
+      const bucket = JSON.parse(localStorage.getItem(key)!) as PostsBucket
+      posts.push(...bucket.posts)
+    } catch { /* skip */ }
+  }
+  return posts
+}
+
+/** Get own likes for the given months from localStorage. */
+export function getMyLikes(months: YearMonth[]): LikeRecord[] {
+  const likes: LikeRecord[] = []
+  for (const m of months) {
+    const bucket = _loadBucket<LikesBucket>('likes', m)
+    if (bucket) likes.push(...bucket.likes)
+  }
+  return likes
+}
+
+/** Get all own likes across all months from localStorage. */
+export function getAllMyLikes(): LikeRecord[] {
+  const likes: LikeRecord[] = []
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i)
+    if (!key?.startsWith(`${BUCKET_PREFIX}likes:`)) continue
+    try {
+      const bucket = JSON.parse(localStorage.getItem(key)!) as LikesBucket
+      likes.push(...bucket.likes)
+    } catch { /* skip */ }
+  }
+  return likes
+}
+
+// ── Peer bucket fetching ──────────────────────────────────────────────────────
+
+/** Fetch a peer's posts for the given months by resolving bucket CIDs. */
+export async function fetchPeerPostBuckets(
+  manifest: WallManifest,
+  months: YearMonth[],
+): Promise<WallPost[]> {
+  const results = await Promise.all(
+    months.map(async (m) => {
+      const cid = manifest.posts[m]
+      if (!cid) return []
+      try {
+        const bucket = await catJson<PostsBucket>(cid)
+        return bucket.posts
+      } catch {
+        console.warn('[profile] Failed to fetch posts bucket', m)
+        return []
+      }
+    })
+  )
+  return results.flat()
+}
+
+export interface PeerInteractions {
+  likes: LikeRecord[]
+}
+
+/** Fetch a peer's likes for the given months by resolving bucket CIDs. */
+export async function fetchPeerInteractions(
+  manifest: WallManifest,
+  months: YearMonth[],
+): Promise<PeerInteractions> {
+  const results = await Promise.all(
+    months.map(async (m) => {
+      const cid = manifest.likes[m]
+      if (!cid) return []
+      try {
+        const bucket = await catJson<LikesBucket>(cid)
+        return bucket.likes
+      } catch {
+        console.warn('[profile] Failed to fetch likes bucket', m)
+        return []
+      }
+    })
+  )
+  return { likes: results.flat() }
+}
+
 // ── Internal: publish manifest to IPFS + IPNS ────────────────────────────────
 
 async function _publishManifest(manifest: WallManifest): Promise<string> {
+  // Ensure migrated buckets have CIDs
+  await _ensureBucketsCidified(manifest)
+
   // Embed cached IPNS records for followed peers (gossip hints for other followers)
   const peerRecords: Record<string, string> = {}
   for (const peerId of manifest.following) {
@@ -259,24 +607,43 @@ export async function followPeer(peerId: string): Promise<void> {
 
 /** Result of resolving a followed peer — includes staleness metadata. */
 export interface PeerResolution {
-  manifest: WallManifest
+  manifest: ResolvedManifest
   /** True when the result came from a cached IPNS record (may be outdated). */
   stale: boolean
   /** When the IPNS record was last successfully resolved (epoch ms). */
   resolvedAt: number
 }
 
-/** Fetch a manifest from a CID, trying flat JSON then legacy directory format. */
-async function _fetchManifest(cid: string): Promise<WallManifest | null> {
+/** Fetch a manifest from a CID, trying flat JSON then legacy directory format. Handles v1→v2 conversion. */
+async function _fetchManifest(cid: string): Promise<ResolvedManifest | null> {
   try {
-    return await catJson<WallManifest>(cid)
+    const raw = await catJson<any>(cid)
+    if (raw.version === 1) return _convertRemoteV1(raw as WallManifestV1)
+    return raw as WallManifest
   } catch {
     console.info('[profile] Flat fetch failed, trying legacy directory format')
     try {
-      return await catJson<WallManifest>(cid, 'manifest.json')
+      const raw = await catJson<any>(cid, 'manifest.json')
+      if (raw.version === 1) return _convertRemoteV1(raw as WallManifestV1)
+      return raw as WallManifest
     } catch {
       return null
     }
+  }
+}
+
+/** Convert a remote v1 manifest to v2 shape for read-only display. */
+function _convertRemoteV1(v1: WallManifestV1): ResolvedManifest {
+  return {
+    version: 2,
+    displayName: v1.displayName,
+    tag: v1.tag,
+    following: v1.following,
+    posts: {},
+    likes: {},
+    peerRecords: v1.peerRecords,
+    updatedAt: v1.updatedAt,
+    _inlinePosts: v1.wall,
   }
 }
 

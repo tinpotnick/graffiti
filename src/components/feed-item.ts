@@ -19,6 +19,16 @@ export interface FeedPost {
   stale?: boolean
   /** When the IPNS record was last successfully resolved (epoch ms). */
   resolvedAt?: number
+  /** Local user's interaction: 0 = none, 1 = liked, 2 = really liked. */
+  myInteraction?: 0 | 1 | 2
+  /** Number of likes (strength 1) from resolved peers. */
+  likeCount?: number
+  /** Number of really-likes (strength 2) from resolved peers. */
+  reallyLikeCount?: number
+  /** If this feed item is a "really-like" repost, the PeerID of who really-liked it. */
+  reallyLikedBy?: string
+  /** Tag CID for the person who really-liked. */
+  reallyLikedByTagCid?: string
 }
 
 const STYLES = `
@@ -166,6 +176,74 @@ const STYLES = `
     color: var(--text-muted);
     opacity: 0.7;
   }
+
+  .like-group {
+    display: flex;
+    align-items: center;
+    gap: 0.15rem;
+    padding-top: 0.5rem;
+  }
+
+  .like-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.2rem;
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--text-muted);
+    transition: color 0.15s, transform 0.1s;
+  }
+  .like-btn:hover {
+    color: var(--text);
+  }
+  .like-btn:active {
+    transform: scale(0.85);
+  }
+  .like-btn svg {
+    width: 18px;
+    height: 18px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    transition: fill 0.15s;
+  }
+  .like-btn.lit {
+    color: #e5395e;
+  }
+  .like-btn.lit svg {
+    fill: #e5395e;
+    stroke: #e5395e;
+  }
+
+  .like-count {
+    font-family: var(--font-pixel);
+    font-size: 0.4rem;
+    letter-spacing: 1px;
+    color: var(--text-muted);
+    padding-left: 0.2rem;
+  }
+
+  .really-liked-banner {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.4rem 1rem;
+    font-family: var(--font-pixel);
+    font-size: 0.4rem;
+    letter-spacing: 1px;
+    color: var(--text-muted);
+    background: var(--surface-inset);
+  }
+  .really-liked-banner img {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    image-rendering: pixelated;
+  }
 `
 
 class FeedItem extends HTMLElement {
@@ -173,13 +251,25 @@ class FeedItem extends HTMLElement {
   private _post: FeedPost = { cid: '', caption: '', timestamp: 0, peerId: '', tagCid: '' }
   private _imageUrl: string | null = null
   private _tagUrl: string | null = null
+  private _rlTagUrl: string | null = null
+  private _doubleTapTimer: ReturnType<typeof setTimeout> | null = null
   myPeerId = ''
 
   set post(value: FeedPost) {
+    const prev = this._post
     this._post = value
+
+    // If only interaction state changed, patch the like UI without full re-render
+    if (this._root && prev.cid === value.cid && prev.timestamp === value.timestamp) {
+      this._patchLikes()
+      return
+    }
+
     this._render()
+    this._bindActions()
     if (this._post.type !== 'text') this._loadImage()
     this._loadTag()
+    if (this._post.reallyLikedByTagCid) this._loadRlTag()
   }
 
   get post(): FeedPost {
@@ -190,8 +280,10 @@ class FeedItem extends HTMLElement {
     if (this.shadowRoot) return
     this._root = this.attachShadow({ mode: 'open' })
     this._render()
+    this._bindActions()
     if (this._post.cid && this._post.type !== 'text') this._loadImage()
     if (this._post.tagCid) this._loadTag()
+    if (this._post.reallyLikedByTagCid) this._loadRlTag()
   }
 
   disconnectedCallback() {
@@ -203,11 +295,20 @@ class FeedItem extends HTMLElement {
       URL.revokeObjectURL(this._tagUrl)
       this._tagUrl = null
     }
+    if (this._rlTagUrl) {
+      URL.revokeObjectURL(this._rlTagUrl)
+      this._rlTagUrl = null
+    }
+    if (this._doubleTapTimer) {
+      clearTimeout(this._doubleTapTimer)
+      this._doubleTapTimer = null
+    }
   }
 
   private _render() {
     if (!this._root) return
-    const { caption, timestamp, peerId, bounds, wallRef, wallBounds, type, title, cid } = this._post
+    const { caption, timestamp, peerId, bounds, wallRef, wallBounds, type, title, cid,
+            myInteraction, likeCount, reallyLikeCount, reallyLikedBy } = this._post
     const shortId = peerId.length > 16 ? `${peerId.slice(0, 8)}…${peerId.slice(-6)}` : peerId
     const timeStr = timestamp ? relativeTime(timestamp) : ''
     const isText = type === 'text'
@@ -246,9 +347,20 @@ class FeedItem extends HTMLElement {
       ? `<span class="stale-badge">CACHED · ${relativeTime(this._post.resolvedAt)}</span>`
       : ''
 
+    const interaction = myInteraction ?? 0
+    const totalCount = (likeCount ?? 0) + (reallyLikeCount ?? 0)
+
+    const reallyLikedBanner = reallyLikedBy
+      ? `<div class="really-liked-banner">
+          <img id="rl-tag-slot" alt="">
+          <span>${reallyLikedBy.length > 16 ? `${reallyLikedBy.slice(0, 8)}…${reallyLikedBy.slice(-6)}` : reallyLikedBy} REALLY LIKED THIS</span>
+        </div>`
+      : ''
+
     this._root.innerHTML = `
       <style>${STYLES}</style>
       <article>
+        ${reallyLikedBanner}
         ${topContent}
         <div class="post-body">
           ${wallRef ? '<div class="wall-ref-badge">TAGGED A WALL</div>' : ''}
@@ -262,9 +374,98 @@ class FeedItem extends HTMLElement {
               <span>${timeStr}</span>
             </div>
           </div>
+          <div class="like-group">
+            <button class="like-btn ${interaction >= 1 ? 'lit' : ''}" id="like-btn" title="Like">
+              <svg viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78L12 21.23l8.84-8.84a5.5 5.5 0 0 0 0-7.78z"/></svg>
+            </button>
+            <button class="like-btn ${interaction >= 2 ? 'lit' : ''}" id="really-like-btn" title="Really like">
+              <svg viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78L12 21.23l8.84-8.84a5.5 5.5 0 0 0 0-7.78z"/></svg>
+            </button>
+            ${totalCount ? `<span class="like-count">${totalCount}</span>` : ''}
+          </div>
         </div>
       </article>
     `
+  }
+
+  /** Patch only the like buttons + count without a full re-render. */
+  private _patchLikes() {
+    const interaction = this._post.myInteraction ?? 0
+    const totalCount = (this._post.likeCount ?? 0) + (this._post.reallyLikeCount ?? 0)
+
+    const likeBtn = this._root.querySelector('#like-btn')
+    const reallyLikeBtn = this._root.querySelector('#really-like-btn')
+
+    if (likeBtn) {
+      likeBtn.className = `like-btn ${interaction >= 1 ? 'lit' : ''}`
+    }
+    if (reallyLikeBtn) {
+      reallyLikeBtn.className = `like-btn ${interaction >= 2 ? 'lit' : ''}`
+    }
+
+    const countEl = this._root.querySelector('.like-count')
+    if (totalCount && countEl) {
+      countEl.textContent = String(totalCount)
+    } else if (totalCount && !countEl) {
+      const span = document.createElement('span')
+      span.className = 'like-count'
+      span.textContent = String(totalCount)
+      this._root.querySelector('.like-group')?.appendChild(span)
+    } else if (!totalCount && countEl) {
+      countEl.remove()
+    }
+  }
+
+  private _bindActions() {
+    if (!this._root) return
+
+    const likeBtn = this._root.querySelector('#like-btn')
+    const reallyLikeBtn = this._root.querySelector('#really-like-btn')
+    const article = this._root.querySelector('article')
+
+    likeBtn?.addEventListener('click', (e) => {
+      e.stopPropagation()
+      const current = this._post.myInteraction ?? 0
+      // 0 → 1 (like), 1 → 0 (unlike), 2 → 1 (downgrade to like)
+      const next = current === 1 ? 0 : 1
+      this._dispatchInteraction(next as 0 | 1 | 2)
+    })
+
+    reallyLikeBtn?.addEventListener('click', (e) => {
+      e.stopPropagation()
+      const current = this._post.myInteraction ?? 0
+      // 0 → 2 (really like), 1 → 2 (upgrade), 2 → 0 (unlike)
+      const next = current === 2 ? 0 : 2
+      this._dispatchInteraction(next as 0 | 1 | 2)
+    })
+
+    // Double-tap on article → really like
+    if (article) {
+      let lastTap = 0
+      article.addEventListener('click', () => {
+        const now = Date.now()
+        if (now - lastTap < 350) {
+          // Double tap → really like (or toggle off if already really-liked)
+          const current = this._post.myInteraction ?? 0
+          this._dispatchInteraction(current === 2 ? 0 : 2)
+          lastTap = 0
+        } else {
+          lastTap = now
+        }
+      })
+    }
+  }
+
+  private _dispatchInteraction(strength: 0 | 1 | 2) {
+    this.dispatchEvent(new CustomEvent('post-interact', {
+      bubbles: true,
+      composed: true,
+      detail: {
+        target: this._post.cid,
+        author: this._post.peerId,
+        strength,
+      },
+    }))
   }
 
   private async _loadImage() {
@@ -299,6 +500,21 @@ class FeedItem extends HTMLElement {
 
       const el = this._root.querySelector<HTMLImageElement>('#tag-slot')
       if (el) el.src = this._tagUrl
+    } catch {
+      // Tag unavailable — leave blank
+    }
+  }
+
+  private async _loadRlTag() {
+    if (!this._post.reallyLikedByTagCid || !this._root) return
+    try {
+      const bytes = await catBytes(this._post.reallyLikedByTagCid)
+      const blob = new Blob([bytes.buffer as ArrayBuffer], { type: 'image/png' })
+      if (this._rlTagUrl) URL.revokeObjectURL(this._rlTagUrl)
+      this._rlTagUrl = URL.createObjectURL(blob)
+
+      const el = this._root.querySelector<HTMLImageElement>('#rl-tag-slot')
+      if (el) el.src = this._rlTagUrl
     } catch {
       // Tag unavailable — leave blank
     }
