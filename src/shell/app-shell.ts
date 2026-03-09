@@ -22,6 +22,8 @@ template.innerHTML = `
 
 class AppShell extends HTMLElement {
   private container: HTMLElement | null = null;
+  private readonly viewCache = new Map<string, HTMLElement>();
+  private activeView: HTMLElement | null = null;
   private readonly onPopState: () => void;
   private readonly onClick: EventListener;
 
@@ -85,7 +87,34 @@ class AppShell extends HTMLElement {
 
   private renderRoute(pathname: string) {
     const routeTag = this.resolveRoute(pathname);
-    this.container!.replaceChildren(document.createElement(routeTag));
+    const cacheable = routeTag !== "view-post";
+
+    // Hide current view
+    if (this.activeView) {
+      this.activeView.style.display = "none";
+    }
+
+    if (cacheable && this.viewCache.has(routeTag)) {
+      // Reuse cached view
+      const view = this.viewCache.get(routeTag)!;
+      view.style.display = "";
+      this.activeView = view;
+    } else {
+      // Destroy any previous uncacheable view (e.g. old view-post)
+      if (!cacheable) {
+        const old = this.viewCache.get(routeTag);
+        if (old) {
+          old.remove();
+          this.viewCache.delete(routeTag);
+        }
+      }
+
+      const view = document.createElement(routeTag);
+      this.container!.appendChild(view);
+      this.viewCache.set(routeTag, view);
+      this.activeView = view;
+    }
+
     this.container!.dataset.route = pathname.replace(/^\//, "") || "home";
     window.dispatchEvent(new CustomEvent("route-change", { detail: { pathname } }));
   }
