@@ -30,9 +30,9 @@ template.innerHTML = `
       z-index: 2;
       background: linear-gradient(
         180deg,
-        rgba(251, 251, 251, 0.98) 0%,  /* --surface-header */
-        rgba(251, 251, 251, 0.9) 80%,
-        rgba(251, 251, 251, 0) 100%
+        var(--surface-header-98) 0%,
+        var(--surface-header-90) 80%,
+        var(--surface-header-0) 100%
       );
       padding: 0.5rem 0 1rem;
     }

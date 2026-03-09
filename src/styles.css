@@ -42,12 +42,137 @@
   --shadow-input:      0 10px 24px rgba(0, 0, 0, 0.08);
   --shadow-publish:    0 10px 20px rgba(0, 0, 0, 0.2);
 
+  /* Header gradient (used in sticky headers) */
+  --surface-header-98: rgba(251, 251, 251, 0.98);
+  --surface-header-90: rgba(251, 251, 251, 0.9);
+  --surface-header-0:  rgba(251, 251, 251, 0);
+
+  /* Paint-zone tokens (light) */
+  --px-bg:      #e8e8f0;
+  --px-bl:      #c8c8d8;
+  --px-bd:      #a0a0b4;
+  --px-bg-up:   #d8d8e8;
+  --px-bg-dn:   #cccce0;
+  --px-text:    #2a2a40;
+  --px-muted:   #7878a0;
+  --px-active:  #b8860b;
+  --px-mirror:  #1a6fb5;
+  --px-danger:  #cc003d;
+  --px-success: #00a82a;
+  --px-canvas:  #ffffff;
+
   /* Border radius */
   --radius-sm:   3px;
   --radius-md:   6px;
   --radius-lg:   10px;
   --radius-xl:   12px;
   --radius-pill: 999px;
+}
+
+/* ── Dark theme (explicit) ──────────────────────────── */
+:root[data-theme="dark"] {
+  --surface:         #121218;
+  --surface-raised:  #1a1a24;
+  --surface-inset:   #0e0e16;
+  --surface-header:  #16161e;
+
+  --text:            #e8e8f0;
+  --text-inverse:    #0b0b0b;
+  --text-muted:      rgba(255, 255, 255, 0.35);
+  --text-secondary:  rgba(255, 255, 255, 0.6);
+
+  --border:          rgba(255, 255, 255, 0.08);
+  --border-medium:   rgba(255, 255, 255, 0.12);
+  --border-strong:   rgba(255, 255, 255, 0.18);
+  --border-feed:     #2a2a36;
+  --border-editor:   rgba(127, 127, 127, 0.35);
+
+  --accent:          #e8e8f0;
+  --surface-code:    rgba(255, 255, 255, 0.06);
+
+  --nav-bg-from:       rgba(18, 18, 24, 0.92);
+  --nav-bg-to:         rgba(18, 18, 24, 0.98);
+  --nav-border-top:    rgba(255, 255, 255, 0.06);
+  --nav-btn-border:    rgba(255, 255, 255, 0.08);
+  --nav-active-border: rgba(0, 0, 0, 0.08);
+
+  --shadow-nav:        0 -14px 30px rgba(0, 0, 0, 0.3);
+  --shadow-btn:        0 12px 22px rgba(0, 0, 0, 0.3);
+  --shadow-btn-hover:  0 14px 24px rgba(0, 0, 0, 0.4);
+  --shadow-btn-active: 0 12px 24px rgba(0, 0, 0, 0.5);
+  --shadow-input:      0 10px 24px rgba(0, 0, 0, 0.2);
+  --shadow-publish:    0 10px 20px rgba(0, 0, 0, 0.4);
+
+  --surface-header-98: rgba(22, 22, 30, 0.98);
+  --surface-header-90: rgba(22, 22, 30, 0.9);
+  --surface-header-0:  rgba(22, 22, 30, 0);
+
+  --px-bg:      #0a0a12;
+  --px-bl:      #3d3d5c;
+  --px-bd:      #06060e;
+  --px-bg-up:   #1a1a2e;
+  --px-bg-dn:   #0d0d1a;
+  --px-text:    #c0bfd6;
+  --px-muted:   #4a4a7a;
+  --px-active:  #ffec27;
+  --px-mirror:  #29adff;
+  --px-danger:  #ff004d;
+  --px-success: #00e436;
+  --px-canvas:  #000000;
+}
+
+/* ── Dark theme (system preference, no explicit choice) ─ */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --surface:         #121218;
+    --surface-raised:  #1a1a24;
+    --surface-inset:   #0e0e16;
+    --surface-header:  #16161e;
+
+    --text:            #e8e8f0;
+    --text-inverse:    #0b0b0b;
+    --text-muted:      rgba(255, 255, 255, 0.35);
+    --text-secondary:  rgba(255, 255, 255, 0.6);
+
+    --border:          rgba(255, 255, 255, 0.08);
+    --border-medium:   rgba(255, 255, 255, 0.12);
+    --border-strong:   rgba(255, 255, 255, 0.18);
+    --border-feed:     #2a2a36;
+    --border-editor:   rgba(127, 127, 127, 0.35);
+
+    --accent:          #e8e8f0;
+    --surface-code:    rgba(255, 255, 255, 0.06);
+
+    --nav-bg-from:       rgba(18, 18, 24, 0.92);
+    --nav-bg-to:         rgba(18, 18, 24, 0.98);
+    --nav-border-top:    rgba(255, 255, 255, 0.06);
+    --nav-btn-border:    rgba(255, 255, 255, 0.08);
+    --nav-active-border: rgba(0, 0, 0, 0.08);
+
+    --shadow-nav:        0 -14px 30px rgba(0, 0, 0, 0.3);
+    --shadow-btn:        0 12px 22px rgba(0, 0, 0, 0.3);
+    --shadow-btn-hover:  0 14px 24px rgba(0, 0, 0, 0.4);
+    --shadow-btn-active: 0 12px 24px rgba(0, 0, 0, 0.5);
+    --shadow-input:      0 10px 24px rgba(0, 0, 0, 0.2);
+    --shadow-publish:    0 10px 20px rgba(0, 0, 0, 0.4);
+
+    --surface-header-98: rgba(22, 22, 30, 0.98);
+    --surface-header-90: rgba(22, 22, 30, 0.9);
+    --surface-header-0:  rgba(22, 22, 30, 0);
+
+    --px-bg:      #0a0a12;
+    --px-bl:      #3d3d5c;
+    --px-bd:      #06060e;
+    --px-bg-up:   #1a1a2e;
+    --px-bg-dn:   #0d0d1a;
+    --px-text:    #c0bfd6;
+    --px-muted:   #4a4a7a;
+    --px-active:  #ffec27;
+    --px-mirror:  #29adff;
+    --px-danger:  #ff004d;
+    --px-success: #00e436;
+    --px-canvas:  #000000;
+  }
 }
 
 * {

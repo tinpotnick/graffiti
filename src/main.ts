@@ -13,6 +13,35 @@ import { defineAccountView } from "./views/account-view";
 import { definePostView } from "./views/post-view";
 import { defineWallScroll } from "./components/wall-scroll";
 
+/* ── Theme ──────────────────────────────────────── */
+export type ThemeChoice = "light" | "dark" | "system";
+const THEME_KEY = "graffiti:theme";
+
+function applyTheme(choice: ThemeChoice) {
+  if (choice === "light" || choice === "dark") {
+    document.documentElement.dataset.theme = choice;
+  } else {
+    delete document.documentElement.dataset.theme;
+  }
+}
+
+export function getTheme(): ThemeChoice {
+  const stored = localStorage.getItem(THEME_KEY);
+  if (stored === "light" || stored === "dark" || stored === "system") return stored;
+  return "dark";
+}
+
+export function setTheme(choice: ThemeChoice) {
+  if (choice === "system") {
+    localStorage.removeItem(THEME_KEY);
+  } else {
+    localStorage.setItem(THEME_KEY, choice);
+  }
+  applyTheme(choice);
+}
+
+applyTheme(getTheme());
+
 defineTopNav();
 defineFeedItem();
 defineMdEditor();

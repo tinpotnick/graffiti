@@ -84,23 +84,16 @@ const STYLES = `
     display: flex;
     flex-direction: column;
     min-height: 100dvh;
-    background: #0a0a12;
+    background: var(--px-bg);
     color: var(--px-text);
     font-family: var(--font-pixel);
     font-size: 8px;
     box-sizing: border-box;
-    /* Bevel system */
-    --bl: #3d3d5c;
-    --bd: #06060e;
-    --bg-up: #1a1a2e;
-    --bg-dn: #0d0d1a;
-    /* Semantic paint-zone tokens */
-    --px-text:    #c0bfd6;
-    --px-muted:   #4a4a7a;
-    --px-active:  #ffec27;
-    --px-mirror:  #29adff;
-    --px-danger:  #ff004d;
-    --px-success: #00e436;
+    /* Map inherited tokens to local shorthands */
+    --bl: var(--px-bl);
+    --bd: var(--px-bd);
+    --bg-up: var(--px-bg-up);
+    --bg-dn: var(--px-bg-dn);
   }
 
   .view {
@@ -300,7 +293,7 @@ const STYLES = `
     position: relative; overflow: auto;
     border: 2px solid;
     border-color: var(--bd) var(--bl) var(--bl) var(--bd);
-    background: #000; max-height: 55dvh;
+    background: var(--px-canvas); max-height: 55dvh;
     scrollbar-width: thin;
     scrollbar-color: var(--bl) var(--bg-dn);
   }
@@ -596,6 +589,12 @@ class PaintView extends HTMLElement {
     const d = img.data;
     const scale = size / 64;
 
+    // Read empty-pixel background from theme
+    const bgHex = getComputedStyle(this).getPropertyValue("--px-bg-dn").trim() || "#0d0d1a";
+    const eR = parseInt(bgHex.slice(1, 3), 16);
+    const eG = parseInt(bgHex.slice(3, 5), 16);
+    const eB = parseInt(bgHex.slice(5, 7), 16);
+
     for (let py = 0; py < size; py++) {
       for (let px = 0; px < size; px++) {
         const srcX = Math.floor(px / scale);
@@ -603,7 +602,7 @@ class PaintView extends HTMLElement {
         const idx = pixels[srcY * 64 + srcX];
         const di = (py * size + px) * 4;
         if (idx === EMPTY) {
-          d[di] = 13; d[di + 1] = 13; d[di + 2] = 26; d[di + 3] = 255;
+          d[di] = eR; d[di + 1] = eG; d[di + 2] = eB; d[di + 3] = 255;
         } else {
           const [r, g, b] = PALETTE_RGB[idx];
           d[di] = r; d[di + 1] = g; d[di + 2] = b; d[di + 3] = 255;

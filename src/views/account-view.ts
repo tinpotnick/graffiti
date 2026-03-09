@@ -2,6 +2,8 @@ import QRCode from 'qrcode'
 import jsQR from 'jsqr'
 import { getMyPeerId, loadManifest, followPeer, unfollowPeer, setDisplayName } from '../services/profile'
 import { hasPinataJwt, setPinataJwt, clearPinataJwt, getPinataGateway, setPinataGateway, clearPinataGateway } from '../services/pinning'
+import { getTheme, setTheme } from '../main'
+import type { ThemeChoice } from '../main'
 
 const STYLES = `
   :host {
@@ -316,6 +318,33 @@ const STYLES = `
   }
   .pin-badge.ok    { color: #16a34a; border-color: #16a34a; }
   .pin-badge.warn  { color: #d97706; border-color: #d97706; }
+
+  /* ── Theme toggle ──────────────── */
+  .theme-row {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 1.25rem;
+  }
+  .theme-btn {
+    flex: 1;
+    padding: 0.6rem 0;
+    font-family: var(--font-pixel);
+    font-size: 0.55rem;
+    letter-spacing: 2px;
+    cursor: pointer;
+    background: var(--surface-raised);
+    color: var(--text-muted);
+    border: 1px solid var(--border);
+    transition: color 0.15s, background 0.15s;
+  }
+  .theme-btn:first-child { border-radius: var(--radius-md) 0 0 var(--radius-md); border-right: none; }
+  .theme-btn:nth-child(2) { border-right: none; }
+  .theme-btn:last-child  { border-radius: 0 var(--radius-md) var(--radius-md) 0; }
+  .theme-btn.active {
+    background: var(--accent);
+    color: var(--text-inverse);
+    border-color: var(--accent);
+  }
 `
 
 class AccountView extends HTMLElement {
@@ -330,6 +359,7 @@ class AccountView extends HTMLElement {
     this._bindName()
     this._renderFollowing()
     this._bindEvents()
+    this._bindTheme()
     this._bindSettings()
   }
 
@@ -383,6 +413,11 @@ class AccountView extends HTMLElement {
 
         <section class="settings-card">
           <h2>SETTINGS</h2>
+          <div class="theme-row" id="theme-row">
+            <button class="theme-btn" data-theme="light">LIGHT</button>
+            <button class="theme-btn" data-theme="dark">DARK</button>
+            <button class="theme-btn" data-theme="system">SYSTEM</button>
+          </div>
           <input class="jwt-input" id="jwt-input" type="password"
             placeholder="Pinata JWT (for remote pinning)…" autocomplete="off" spellcheck="false">
           <div class="settings-row">
@@ -415,10 +450,13 @@ class AccountView extends HTMLElement {
       this._peerId = await getMyPeerId()
 
       // Replace placeholder with an <img> (canvas loses content when display:none)
+      const style = getComputedStyle(document.documentElement)
+      const qrDark = style.getPropertyValue('--text').trim() || '#0b0b0b'
+      const qrLight = style.getPropertyValue('--surface').trim() || '#fafafa'
       const dataUrl = await QRCode.toDataURL(this._peerId, {
         width: 200,
         margin: 2,
-        color: { dark: '#0b0b0b', light: '#fafafa' },
+        color: { dark: qrDark, light: qrLight },
       })
       const img = document.createElement('img')
       img.id = 'qr-canvas'
@@ -570,6 +608,23 @@ class AccountView extends HTMLElement {
     } finally {
       URL.revokeObjectURL(url)
     }
+  }
+
+  private _bindTheme() {
+    const row = this._root.querySelector<HTMLElement>('#theme-row')!
+    const current = getTheme()
+    row.querySelectorAll<HTMLElement>('.theme-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.theme === current)
+    })
+    row.addEventListener('click', (e) => {
+      const btn = (e.target as HTMLElement).closest<HTMLElement>('.theme-btn')
+      if (!btn?.dataset.theme) return
+      const choice = btn.dataset.theme as ThemeChoice
+      setTheme(choice)
+      row.querySelectorAll<HTMLElement>('.theme-btn').forEach(b => {
+        b.classList.toggle('active', b.dataset.theme === choice)
+      })
+    })
   }
 
   private _bindSettings() {
