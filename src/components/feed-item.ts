@@ -29,6 +29,10 @@ export interface FeedPost {
   reallyLikedBy?: string
   /** Tag CID for the person who really-liked. */
   reallyLikedByTagCid?: string
+  /** Display name from the author's manifest (empty string or undefined = show PeerID). */
+  displayName?: string
+  /** Display name of the person who really-liked. */
+  reallyLikedByName?: string
 }
 
 const STYLES = `
@@ -308,8 +312,8 @@ class FeedItem extends HTMLElement {
   private _render() {
     if (!this._root) return
     const { caption, timestamp, peerId, bounds, wallRef, wallBounds, type, title, cid,
-            myInteraction, likeCount, reallyLikeCount, reallyLikedBy } = this._post
-    const shortId = peerId.length > 16 ? `${peerId.slice(0, 8)}…${peerId.slice(-6)}` : peerId
+            myInteraction, likeCount, reallyLikeCount, reallyLikedBy, displayName, reallyLikedByName } = this._post
+    const shortId = displayName || (peerId.length > 16 ? `${peerId.slice(0, 8)}…${peerId.slice(-6)}` : peerId)
     const timeStr = timestamp ? relativeTime(timestamp) : ''
     const isText = type === 'text'
 
@@ -353,7 +357,7 @@ class FeedItem extends HTMLElement {
     const reallyLikedBanner = reallyLikedBy
       ? `<div class="really-liked-banner">
           <img id="rl-tag-slot" alt="">
-          <span>${reallyLikedBy.length > 16 ? `${reallyLikedBy.slice(0, 8)}…${reallyLikedBy.slice(-6)}` : reallyLikedBy} REALLY LIKED THIS</span>
+          <span>${reallyLikedByName || (reallyLikedBy.length > 16 ? `${reallyLikedBy.slice(0, 8)}…${reallyLikedBy.slice(-6)}` : reallyLikedBy)} REALLY LIKED THIS</span>
         </div>`
       : ''
 

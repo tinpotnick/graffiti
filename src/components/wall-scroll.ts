@@ -291,9 +291,9 @@ class WallScroll extends HTMLElement {
     this._dismissOverlay()
 
     const { base, tags } = state
-    const shortId = base.peerId.length > 16
+    const shortId = base.displayName || (base.peerId.length > 16
       ? `${base.peerId.slice(0, 8)}…${base.peerId.slice(-6)}`
-      : base.peerId
+      : base.peerId)
     const timeStr = state.latestTimestamp ? relativeTime(state.latestTimestamp) : ''
 
     // Own wall → EDIT (go to wall painter); other walls → TAG THIS

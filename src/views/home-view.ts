@@ -175,6 +175,7 @@ class HomeView extends HTMLElement {
         timestamp: p.timestamp,
         peerId: myPeerId,
         tagCid: manifest.tag,
+        displayName: manifest.displayName || undefined,
         type: p.type,
         title: p.title,
         bounds: p.x != null ? { x: p.x, y: p.y!, w: p.w!, h: p.h! } : undefined,
@@ -185,7 +186,7 @@ class HomeView extends HTMLElement {
 
       // ── Interaction counts ──
       const interactionCounts = new Map<string, { likes: number; reallyLikes: number }>()
-      const allReallyLikes: Array<LikeRecord & { byPeerId: string; byTagCid: string }> = []
+      const allReallyLikes: Array<LikeRecord & { byPeerId: string; byTagCid: string; byName?: string }> = []
 
       // Count own likes
       for (const l of myLikes) {
@@ -213,6 +214,7 @@ class HomeView extends HTMLElement {
           return {
             peerId,
             tagCid: peerManifest.tag,
+            displayName: peerManifest.displayName || undefined,
             posts: peerPosts,
             interactions: peerInteractions,
             stale: result.stale,
@@ -232,6 +234,7 @@ class HomeView extends HTMLElement {
             timestamp: p.timestamp,
             peerId: pr.peerId,
             tagCid: pr.tagCid,
+            displayName: pr.displayName,
             type: p.type,
             title: p.title,
             bounds: p.x != null ? { x: p.x, y: p.y!, w: p.w!, h: p.h! } : undefined,
@@ -255,6 +258,7 @@ class HomeView extends HTMLElement {
               ...l,
               byPeerId: pr.peerId,
               byTagCid: pr.tagCid,
+              byName: pr.displayName,
             })
           }
         }
@@ -269,6 +273,7 @@ class HomeView extends HTMLElement {
             timestamp: rl.timestamp,
             reallyLikedBy: rl.byPeerId,
             reallyLikedByTagCid: rl.byTagCid,
+            reallyLikedByName: rl.byName,
           })
         }
       }

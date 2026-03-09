@@ -595,6 +595,15 @@ async function _publishManifest(manifest: WallManifest): Promise<string> {
 
 // ── Follow management ─────────────────────────────────────────────────────────
 
+/** Update the local user's display name and re-publish the manifest. */
+export function setDisplayName(name: string): void {
+  const manifest = loadManifest()
+  manifest.displayName = name.trim()
+  manifest.updatedAt = Date.now()
+  _saveManifest(manifest)
+  _publishManifest(manifest).catch(e => console.warn('[profile] republish after displayName change failed:', e))
+}
+
 /** Add a peer to the following list and persist locally (re-publishes to IPNS in background). */
 export async function followPeer(peerId: string): Promise<void> {
   const manifest = loadManifest()

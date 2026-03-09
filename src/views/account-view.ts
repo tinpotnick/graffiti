@@ -1,6 +1,6 @@
 import QRCode from 'qrcode'
 import jsQR from 'jsqr'
-import { getMyPeerId, loadManifest, followPeer, unfollowPeer } from '../services/profile'
+import { getMyPeerId, loadManifest, followPeer, unfollowPeer, setDisplayName } from '../services/profile'
 import { hasPinataJwt, setPinataJwt, clearPinataJwt, getPinataGateway, setPinataGateway, clearPinataGateway } from '../services/pinning'
 
 const STYLES = `
@@ -60,6 +60,29 @@ const STYLES = `
     text-align: center;
     padding: 1rem;
   }
+
+  .name-row {
+    display: flex;
+    gap: 0.5rem;
+    width: 100%;
+    max-width: 360px;
+  }
+
+  .name-input {
+    flex: 1;
+    min-width: 0;
+    font-family: var(--font-body);
+    font-size: 0.85rem;
+    padding: 0.5rem 0.65rem;
+    background: var(--surface-inset);
+    border: 1px solid var(--border-medium);
+    border-radius: var(--radius-md);
+    color: var(--text);
+    outline: none;
+    transition: border-color 150ms;
+  }
+  .name-input:focus { border-color: var(--accent); }
+  .name-input::placeholder { color: var(--text-muted); }
 
   .code-row {
     display: flex;
@@ -304,6 +327,7 @@ class AccountView extends HTMLElement {
     this._root = this.attachShadow({ mode: 'open' })
     this._render()
     this._loadProfile()
+    this._bindName()
     this._renderFollowing()
     this._bindEvents()
     this._bindSettings()
@@ -318,6 +342,12 @@ class AccountView extends HTMLElement {
           <div id="qr-wrap">
             <div class="qr-placeholder" id="qr-placeholder">LOADING…</div>
           </div>
+          <div class="name-row">
+            <input class="name-input" id="name-input" type="text"
+              placeholder="Display name…" maxlength="40" autocomplete="off" spellcheck="false">
+            <button class="btn btn-primary" id="name-save-btn">SAVE</button>
+          </div>
+          <p class="status" id="name-status"></p>
           <div class="code-row">
             <code class="code-text empty" id="peer-id-text">loading…</code>
             <button class="btn" id="copy-btn" disabled>COPY</button>
@@ -404,6 +434,27 @@ class AccountView extends HTMLElement {
       placeholder.textContent = 'START APP\nTO SEE\nPROFILE'
       codeEl.textContent = 'not available in browser mode'
     }
+  }
+
+  private _bindName() {
+    const nameInput = this._root.querySelector<HTMLInputElement>('#name-input')!
+    const saveBtn = this._root.querySelector<HTMLButtonElement>('#name-save-btn')!
+    const status = this._root.querySelector<HTMLElement>('#name-status')!
+
+    // Pre-fill with current display name
+    const manifest = loadManifest()
+    if (manifest.displayName) nameInput.value = manifest.displayName
+
+    saveBtn.addEventListener('click', () => {
+      const val = nameInput.value.trim()
+      setDisplayName(val)
+      this._setStatus(status, 'ok', val ? 'NAME SAVED.' : 'NAME CLEARED.')
+      setTimeout(() => this._setStatus(status, '', ''), 3000)
+    })
+
+    nameInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') saveBtn.click()
+    })
   }
 
   private _renderFollowing() {
