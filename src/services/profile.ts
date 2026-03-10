@@ -64,6 +64,20 @@ export interface LikesBucket {
   likes: LikeRecord[]
 }
 
+export interface DraftEntry {
+  id: string
+  title: string
+  markdown: string
+  /** IPFS content CID for the {title, markdown} JSON. */
+  cid: string
+  updatedAt: number
+  createdAt: number
+}
+
+export interface DraftsBucket {
+  drafts: DraftEntry[]
+}
+
 /** v1 manifest — kept for migration and remote peer compat. */
 interface WallManifestV1 {
   version: 1
@@ -86,6 +100,8 @@ export interface WallManifest {
   posts: BucketIndex
   /** CID pointers to monthly like files, keyed by year-month. */
   likes: BucketIndex
+  /** CID of the drafts bucket (optional, omitted if no drafts). */
+  drafts?: string
   /** Cached signed IPNS records for followed peers (peerId → base64 marshaled record). */
   peerRecords?: Record<string, string>
   updatedAt: number
@@ -101,6 +117,7 @@ const PEER_ID_KEY  = 'graffiti:peer-id'
 /** base64-encoded bytes of the most recently published tag.png */
 const TAG_PNG_KEY  = 'graffiti:tag-png'
 const BUCKET_PREFIX = 'graffiti:bucket:'
+const DRAFTS_KEY   = 'graffiti:drafts'
 
 // ── Year-month helper ─────────────────────────────────────────────────────────
 
@@ -467,6 +484,100 @@ function _findInteractionMonth(manifest: WallManifest, targetCid: string): YearM
     if (bucket && bucket.likes.some(l => l.target === targetCid)) return month
   }
   return null
+}
+
+// ── Drafts ────────────────────────────────────────────────────────────────────
+
+function _loadDrafts(): DraftEntry[] {
+  try {
+    const s = localStorage.getItem(DRAFTS_KEY)
+    return s ? JSON.parse(s) as DraftEntry[] : []
+  } catch { return [] }
+}
+
+function _saveDrafts(drafts: DraftEntry[]): void {
+  try { localStorage.setItem(DRAFTS_KEY, JSON.stringify(drafts)) } catch { /* unavailable */ }
+}
+
+async function _publishDrafts(drafts: DraftEntry[], manifest: WallManifest): Promise<void> {
+  if (drafts.length === 0) {
+    delete manifest.drafts
+  } else {
+    const bucket: DraftsBucket = { drafts }
+    const json = JSON.stringify(bucket, null, 2)
+    const bytes = new TextEncoder().encode(json)
+    const cid = await addBytes(bytes)
+    pinFile(bytes, 'drafts.json', cid).catch(e => console.warn('[profile] drafts bucket pin failed:', e))
+    manifest.drafts = cid
+  }
+  manifest.updatedAt = Date.now()
+  _saveManifest(manifest)
+  _publishManifest(manifest).catch(e => console.warn('[profile] republish after drafts change failed:', e))
+}
+
+/** Get all drafts from localStorage. */
+export function loadDrafts(): DraftEntry[] {
+  return _loadDrafts()
+}
+
+/**
+ * Save a draft to IPFS and localStorage.
+ * If draftId is provided, updates an existing draft; otherwise creates a new one.
+ * Returns the draft ID.
+ */
+export async function saveDraft(title: string, markdown: string, draftId?: string): Promise<string> {
+  const contentCid = await addJson({ title, markdown })
+  const snippetBytes = new TextEncoder().encode(JSON.stringify({ title, markdown }))
+  pinFile(snippetBytes, `draft-${contentCid.slice(-8)}.json`, contentCid).catch(e =>
+    console.warn('[profile] draft content pin failed:', e)
+  )
+
+  const drafts = _loadDrafts()
+  const now = Date.now()
+  let id: string
+
+  if (draftId) {
+    id = draftId
+    const idx = drafts.findIndex(d => d.id === draftId)
+    if (idx >= 0) {
+      drafts[idx] = { ...drafts[idx], title, markdown, cid: contentCid, updatedAt: now }
+    } else {
+      drafts.unshift({ id, title, markdown, cid: contentCid, updatedAt: now, createdAt: now })
+    }
+  } else {
+    id = `d_${now}`
+    drafts.unshift({ id, title, markdown, cid: contentCid, updatedAt: now, createdAt: now })
+  }
+
+  _saveDrafts(drafts)
+  await _publishDrafts(drafts, loadManifest())
+  return id
+}
+
+/** Delete a draft by ID. */
+export async function deleteDraft(draftId: string): Promise<void> {
+  const drafts = _loadDrafts().filter(d => d.id !== draftId)
+  _saveDrafts(drafts)
+  await _publishDrafts(drafts, loadManifest())
+}
+
+/**
+ * Publish a draft as a text post, then remove it from drafts.
+ * Returns the manifest CID from publishTextPost.
+ */
+export async function publishDraft(draftId: string): Promise<string> {
+  const drafts = _loadDrafts()
+  const draft = drafts.find(d => d.id === draftId)
+  if (!draft) throw new Error(`Draft not found: ${draftId}`)
+
+  const manifestCid = await publishTextPost(draft.title, draft.markdown)
+
+  const remaining = drafts.filter(d => d.id !== draftId)
+  _saveDrafts(remaining)
+  // Update manifest drafts field (publishTextPost already saved/published the manifest,
+  // so reload the fresh copy before updating drafts)
+  await _publishDrafts(remaining, loadManifest())
+  return manifestCid
 }
 
 // ── Local data getters (for own feed) ─────────────────────────────────────────

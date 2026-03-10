@@ -155,6 +155,13 @@ class MdEditor extends HTMLElement {
         },
       });
 
+      // Enable browser spellcheck on the contenteditable element directly
+      const proseMirrorEl = this.contentEl.querySelector('.ProseMirror') as HTMLElement | null;
+      if (proseMirrorEl) {
+        proseMirrorEl.spellcheck = true;
+        proseMirrorEl.setAttribute('lang', document.documentElement.lang || 'en');
+      }
+
       if (this._value) {
         this.editor.commands.setContent(this._value);
       }
