@@ -154,8 +154,15 @@ function _loadBucket<T>(kind: 'posts' | 'likes', month: YearMonth): T | null {
 
 // ── Manifest cache ────────────────────────────────────────────────────────────
 
+/** PeerIDs that new users auto-follow so the feed isn't empty on first launch. */
+const DEFAULT_FOLLOWS = [
+  '12D3KooWAALMJ8M8f4MH9hx4VGsUxSkAGYD4uRGggGAfoLyP6dsK', // nick
+]
+
 function emptyManifest(): WallManifest {
-  return { version: 2, displayName: '', tag: '', following: [], posts: {}, likes: {}, updatedAt: 0 }
+  const myPeerId = localStorage.getItem(PEER_ID_KEY) ?? ''
+  const following = DEFAULT_FOLLOWS.filter(id => id !== myPeerId)
+  return { version: 2, displayName: '', tag: '', following, posts: {}, likes: {}, updatedAt: 0 }
 }
 
 export function loadManifest(): WallManifest {
