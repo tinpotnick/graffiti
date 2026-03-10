@@ -11,11 +11,13 @@ template.innerHTML = `
       max-width: 720px;
       margin: 0 auto;
       padding: 1rem;
+      padding-top: calc(1rem + env(safe-area-inset-top, 0px));
       padding-bottom: 6.5rem;
     }
     .container[data-route="paint"] {
       max-width: none;
       padding: 0;
+      padding-top: env(safe-area-inset-top, 0px);
     }
   </style>
 `;

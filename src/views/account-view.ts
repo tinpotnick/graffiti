@@ -235,7 +235,6 @@ const STYLES = `
   }
 
   .btn-outline {
-    width: 100%;
     justify-content: center;
     display: flex;
     gap: 0.5rem;
@@ -246,6 +245,16 @@ const STYLES = `
     width: 1rem;
     height: 1rem;
     flex-shrink: 0;
+  }
+
+  .scan-row {
+    display: flex;
+    gap: 0.5rem;
+  }
+  .scan-row .btn-outline {
+    flex: 1;
+    min-width: 0;
+    font-size: 0.5rem;
   }
 
   /* ── Status messages ───────────────── */
@@ -363,6 +372,38 @@ const STYLES = `
     color: var(--text-muted);
     text-align: center;
     padding: 0.5rem 0;
+  }
+
+  /* ── Camera overlay ─────────────── */
+  .camera-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    background: #000;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+  }
+  .camera-overlay video {
+    width: 100%;
+    max-height: 80vh;
+    object-fit: cover;
+  }
+  .camera-guide {
+    position: absolute;
+    width: 220px;
+    height: 220px;
+    border: 3px solid rgba(255,255,255,0.6);
+    border-radius: var(--radius-xl, 12px);
+    pointer-events: none;
+  }
+  .camera-close {
+    position: absolute;
+    bottom: calc(2rem + env(safe-area-inset-bottom, 0px));
+    background: rgba(255,255,255,0.15) !important;
+    color: #fff !important;
+    border-color: rgba(255,255,255,0.3) !important;
   }
 
   /* ── My Posts section ─────────── */
@@ -611,17 +652,33 @@ class AccountView extends HTMLElement {
               <button class="btn btn-primary" id="add-btn">ADD</button>
             </div>
             <p class="divider">or</p>
-            <button class="btn btn-outline" id="scan-btn">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                stroke-linecap="round" stroke-linejoin="round">
-                <rect x="3" y="3" width="5" height="5" rx="0.5"/>
-                <rect x="16" y="3" width="5" height="5" rx="0.5"/>
-                <rect x="3" y="16" width="5" height="5" rx="0.5"/>
-                <path d="M21 16h-3v3M21 21h-2M16 21v-2M13 3v5h2M13 11h5v2M21 11v1"/>
-              </svg>
-              SCAN QR IMAGE
-            </button>
+            <div class="scan-row">
+              <button class="btn btn-outline" id="camera-btn" style="display:none">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                  stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+                  <circle cx="12" cy="13" r="4"/>
+                </svg>
+                CAMERA
+              </button>
+              <button class="btn btn-outline" id="scan-btn">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                  stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="3" y="3" width="5" height="5" rx="0.5"/>
+                  <rect x="16" y="3" width="5" height="5" rx="0.5"/>
+                  <rect x="3" y="16" width="5" height="5" rx="0.5"/>
+                  <path d="M21 16h-3v3M21 21h-2M16 21v-2M13 3v5h2M13 11h5v2M21 11v1"/>
+                </svg>
+                SCAN IMAGE
+              </button>
+            </div>
             <input type="file" id="scan-input" accept="image/*" style="display:none">
+            <div class="camera-overlay" id="camera-overlay" style="display:none">
+              <video id="camera-video" autoplay playsinline></video>
+              <canvas id="camera-canvas" style="display:none"></canvas>
+              <div class="camera-guide"></div>
+              <button class="btn camera-close" id="camera-close">CLOSE</button>
+            </div>
             <p class="status" id="add-status"></p>
           </section>
 
@@ -910,6 +967,69 @@ class AccountView extends HTMLElement {
     peerInput.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') this._addContact(peerInput.value.trim(), peerInput, addStatus)
     })
+
+    const cameraBtn = this._root.querySelector<HTMLButtonElement>('#camera-btn')!
+    const cameraOverlay = this._root.querySelector<HTMLElement>('#camera-overlay')!
+    const cameraVideo = this._root.querySelector<HTMLVideoElement>('#camera-video')!
+    const cameraCanvas = this._root.querySelector<HTMLCanvasElement>('#camera-canvas')!
+    const cameraClose = this._root.querySelector<HTMLButtonElement>('#camera-close')!
+
+    // Only show camera button on actual mobile devices
+    const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
+    if (isMobile && navigator.mediaDevices) {
+      cameraBtn.style.display = ''
+    }
+
+    let cameraStream: MediaStream | null = null
+    let cameraScanId = 0
+
+    const stopCamera = () => {
+      cameraScanId = 0
+      if (cameraStream) {
+        cameraStream.getTracks().forEach(t => t.stop())
+        cameraStream = null
+      }
+      cameraVideo.srcObject = null
+      cameraOverlay.style.display = 'none'
+    }
+
+    const scanFrame = () => {
+      if (!cameraScanId) return
+      if (cameraVideo.readyState !== cameraVideo.HAVE_ENOUGH_DATA) {
+        requestAnimationFrame(scanFrame)
+        return
+      }
+      const w = cameraVideo.videoWidth
+      const h = cameraVideo.videoHeight
+      cameraCanvas.width = w
+      cameraCanvas.height = h
+      const ctx = cameraCanvas.getContext('2d')!
+      ctx.drawImage(cameraVideo, 0, 0, w, h)
+      const imageData = ctx.getImageData(0, 0, w, h)
+      const code = jsQR(imageData.data, w, h)
+      if (code?.data) {
+        stopCamera()
+        peerInput.value = code.data
+        this._addContact(code.data, peerInput, addStatus)
+        return
+      }
+      cameraScanId = requestAnimationFrame(scanFrame)
+    }
+
+    cameraBtn.addEventListener('click', async () => {
+      try {
+        cameraStream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: 'environment' }
+        })
+        cameraVideo.srcObject = cameraStream
+        cameraOverlay.style.display = ''
+        cameraScanId = requestAnimationFrame(scanFrame)
+      } catch (err) {
+        this._setStatus(addStatus, 'error', 'Camera not available.')
+      }
+    })
+
+    cameraClose.addEventListener('click', stopCamera)
 
     scanBtn.addEventListener('click', () => scanInput.click())
 

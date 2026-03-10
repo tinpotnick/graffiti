@@ -20,14 +20,17 @@ template.innerHTML = `
       display: flex;
       flex-direction: column;
       gap: 1.25rem;
-      padding: 1.5rem 2rem 7rem;
+      padding: 1.5rem 1rem 7rem;
       min-height: calc(100vh - 6.5rem);
+      max-width: 100%;
+      box-sizing: border-box;
+      overflow-x: hidden;
       background: linear-gradient(180deg, var(--surface-header) 0%, var(--surface-inset) 100%);
     }
     .create-header {
       display: flex;
       align-items: center;
-      gap: 0.75rem;
+      gap: 0.5rem;
       position: sticky;
       top: 0;
       z-index: 2;
@@ -38,49 +41,54 @@ template.innerHTML = `
         var(--surface-header-0) 100%
       );
       padding: 0.5rem 0 1rem;
+      flex-wrap: wrap;
     }
     .title {
       flex: 1;
+      min-width: 0;
       border: 1px solid var(--border);
       border-radius: var(--radius-xl);
       padding: 0.7rem 0.9rem;
-      font-size: 1.4rem;
+      font-size: 1.2rem;
       font-weight: 600;
       letter-spacing: 0.01em;
       color: var(--text);
       background: var(--surface-raised);
       box-shadow: var(--shadow-input);
+      box-sizing: border-box;
     }
     .title::placeholder {
       color: var(--text-muted);
     }
     .save-draft {
       border: 1px solid var(--border-medium);
-      padding: 0.65rem 1.15rem;
+      padding: 0.65rem 0.85rem;
       border-radius: var(--radius-pill);
       font-weight: 600;
-      font-size: 0.8rem;
+      font-size: 0.75rem;
       letter-spacing: 0.05em;
       text-transform: uppercase;
       color: var(--text-secondary);
       background: var(--surface-raised);
       cursor: pointer;
+      flex-shrink: 0;
     }
     .save-draft:active {
       transform: translateY(1px);
     }
     .publish {
       border: 0;
-      padding: 0.65rem 1.15rem;
+      padding: 0.65rem 0.85rem;
       border-radius: var(--radius-pill);
       font-weight: 600;
-      font-size: 0.8rem;
+      font-size: 0.75rem;
       letter-spacing: 0.05em;
       text-transform: uppercase;
       color: var(--text-inverse);
       background: var(--accent);
       box-shadow: var(--shadow-publish);
       cursor: pointer;
+      flex-shrink: 0;
     }
     .publish:active {
       transform: translateY(1px);

@@ -71,6 +71,12 @@ export class PaintCanvas extends HTMLElement {
   private _drawing = false;
   private _lastX = -1;
   private _lastY = -1;
+  // Two-finger pan & pinch-zoom
+  private _isPanning = false;
+  private _panLastX = 0;
+  private _panLastY = 0;
+  private _pinchLastDist = 0;
+  private _zoomLevel = 1;   // 1 = fit-to-width
   private _undoStack: Uint8Array[] = [];
   private _redoStack: Uint8Array[] = [];
   private _sprayTimer: number | null = null;
@@ -106,12 +112,14 @@ export class PaintCanvas extends HTMLElement {
 
       this._pixels = new Uint8Array(this.logWidth * this.logHeight).fill(EMPTY);
 
+      this.style.display = "block";
+
       const shadow = this.attachShadow({ mode: "open" });
       this._canvas = document.createElement("canvas");
       this._canvas.width = this.logWidth * this.scale;
       this._canvas.height = this.logHeight * this.scale;
       this._canvas.style.cssText =
-        "display:block;cursor:crosshair;image-rendering:pixelated;touch-action:none;";
+        "display:block;cursor:crosshair;image-rendering:pixelated;touch-action:none;max-width:100%;height:auto;";
       this._ctx = this._canvas.getContext("2d")!;
       shadow.appendChild(this._canvas);
 
@@ -120,7 +128,7 @@ export class PaintCanvas extends HTMLElement {
       document.addEventListener("mouseup", this._onMouseUp);
       this._canvas.addEventListener("touchstart", this._onTouchStart, { passive: false });
       this._canvas.addEventListener("touchmove", this._onTouchMove, { passive: false });
-      document.addEventListener("touchend", this._onMouseUp);
+      document.addEventListener("touchend", this._onTouchEnd);
       this._canvas.addEventListener("contextmenu", (e) => e.preventDefault());
 
       this._render();
@@ -131,15 +139,17 @@ export class PaintCanvas extends HTMLElement {
 
   disconnectedCallback() {
     document.removeEventListener("mouseup", this._onMouseUp);
-    document.removeEventListener("touchend", this._onMouseUp);
+    document.removeEventListener("touchend", this._onTouchEnd);
     this._stopSpray();
   }
 
   private _pos(clientX: number, clientY: number): [number, number] {
     const rect = this._canvas.getBoundingClientRect();
+    const sx = rect.width / this.logWidth;
+    const sy = rect.height / this.logHeight;
     return [
-      Math.max(0, Math.min(this.logWidth - 1, Math.floor((clientX - rect.left) / this.scale))),
-      Math.max(0, Math.min(this.logHeight - 1, Math.floor((clientY - rect.top) / this.scale))),
+      Math.max(0, Math.min(this.logWidth - 1, Math.floor((clientX - rect.left) / sx))),
+      Math.max(0, Math.min(this.logHeight - 1, Math.floor((clientY - rect.top) / sy))),
     ];
   }
 
@@ -192,8 +202,39 @@ export class PaintCanvas extends HTMLElement {
     );
   };
 
+  private _cancelDrawing() {
+    if (!this._drawing) return;
+    this._drawing = false;
+    this._stopSpray();
+    this._snapPixels = null;
+    this._arcPhase = 0;
+    // Revert to pre-stroke state
+    if (this._undoStack.length > 0) {
+      this._pixels.set(this._undoStack.pop()!);
+      this._render();
+      this._emitHistoryChange();
+    }
+  }
+
   private _onTouchStart = (e: TouchEvent) => {
     e.preventDefault();
+
+    // Two or more fingers: switch to pan/pinch mode
+    if (e.touches.length >= 2) {
+      this._cancelDrawing();
+      this._isPanning = true;
+      this._panLastX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+      this._panLastY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+      this._pinchLastDist = Math.hypot(
+        e.touches[1].clientX - e.touches[0].clientX,
+        e.touches[1].clientY - e.touches[0].clientY,
+      );
+      return;
+    }
+
+    // Don't start drawing while panning
+    if (this._isPanning) return;
+
     const t = e.touches[0];
     // Arc phase 1: second gesture — no new history entry
     if (this.tool === "arc" && this._arcPhase === 1) {
@@ -213,10 +254,67 @@ export class PaintCanvas extends HTMLElement {
 
   private _onTouchMove = (e: TouchEvent) => {
     e.preventDefault();
+
+    // Two-finger pinch-zoom + pan
+    if (e.touches.length >= 2 || this._isPanning) {
+      this._cancelDrawing();
+      this._isPanning = true;
+
+      if (e.touches.length >= 2) {
+        // Pinch zoom
+        const dist = Math.hypot(
+          e.touches[1].clientX - e.touches[0].clientX,
+          e.touches[1].clientY - e.touches[0].clientY,
+        );
+        if (this._pinchLastDist > 0) {
+          const ratio = dist / this._pinchLastDist;
+          const baseW = this._canvas.width; // native pixel width
+          this._zoomLevel = Math.min(10, Math.max(1, this._zoomLevel * ratio));
+          const px = Math.round(baseW * this._zoomLevel);
+          this._canvas.style.width = `${px}px`;
+          this._canvas.style.maxWidth = "none";
+        }
+        this._pinchLastDist = dist;
+
+        // Pan using midpoint of two fingers
+        const midX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+        const midY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+        const wrapper = this.parentElement;
+        if (wrapper) {
+          wrapper.scrollLeft -= midX - this._panLastX;
+          wrapper.scrollTop -= midY - this._panLastY;
+        }
+        this._panLastX = midX;
+        this._panLastY = midY;
+      } else {
+        // Single finger while in pan mode (one finger lifted) — just pan
+        const wrapper = this.parentElement;
+        if (wrapper) {
+          wrapper.scrollLeft -= e.touches[0].clientX - this._panLastX;
+          wrapper.scrollTop -= e.touches[0].clientY - this._panLastY;
+        }
+        this._panLastX = e.touches[0].clientX;
+        this._panLastY = e.touches[0].clientY;
+      }
+      return;
+    }
+
     if (!this._drawing) return;
     const t = e.touches[0];
     const [x, y] = this._pos(t.clientX, t.clientY);
     this._continueStroke(x, y);
+  };
+
+  private _onTouchEnd = (e: TouchEvent) => {
+    // Reset panning/pinch when all fingers lifted
+    if (e.touches.length === 0) {
+      this._isPanning = false;
+      this._pinchLastDist = 0;
+    }
+    // Delegate to mouse up for stroke finalization
+    if (this._drawing && e.touches.length === 0) {
+      this._onMouseUp();
+    }
   };
 
   // Unified stroke start (mouse + touch)
