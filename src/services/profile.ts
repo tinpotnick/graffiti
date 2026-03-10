@@ -24,6 +24,8 @@ export interface WallPost {
   type?: 'wall' | 'text'
   /** Title for text posts (kept in manifest for feed snippets). */
   title?: string
+  /** When the post was last edited (epoch ms). Undefined for never-edited posts. */
+  updatedAt?: number
   /** Top-left X of the cropped image on the 320×180 wall */
   x?: number
   /** Top-left Y of the cropped image on the 320×180 wall */
@@ -410,6 +412,76 @@ export async function publishTextPost(title: string, markdown: string): Promise<
   const manifestCid = await _publishManifest(manifest)
   _saveManifest(manifest)
   return manifestCid
+}
+
+// ── Delete / Update posts ─────────────────────────────────────────────────────
+
+/**
+ * Delete a post by CID. Removes it from the appropriate monthly bucket
+ * and re-publishes the manifest.
+ */
+export async function deletePost(cid: string): Promise<void> {
+  const manifest = loadManifest()
+
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i)
+    if (!key?.startsWith(`${BUCKET_PREFIX}posts:`)) continue
+    const month = key.slice(`${BUCKET_PREFIX}posts:`.length)
+    const bucket = _loadBucket<PostsBucket>('posts', month)
+    if (!bucket) continue
+    const idx = bucket.posts.findIndex(p => p.cid === cid)
+    if (idx < 0) continue
+
+    bucket.posts.splice(idx, 1)
+    const bucketCid = await _publishBucket('posts', month, bucket)
+    manifest.posts[month] = bucketCid
+    manifest.updatedAt = Date.now()
+    _saveBucket('posts', month, bucket)
+    _saveManifest(manifest)
+    await _publishManifest(manifest)
+    return
+  }
+}
+
+/**
+ * Update a published text post. Replaces the old entry in its bucket with
+ * new content (new CID, title, caption) and sets updatedAt.
+ */
+export async function updateTextPost(oldCid: string, title: string, markdown: string): Promise<string> {
+  const newCid = await addJson({ title, markdown })
+  const snippetBytes = new TextEncoder().encode(JSON.stringify({ title, markdown }))
+  pinFile(snippetBytes, `post-${newCid.slice(-8)}.json`, newCid).catch(e => console.warn('[profile] text post pin failed:', e))
+
+  const manifest = loadManifest()
+  const caption = markdown.replace(/[#*_`>\[\]!\-]/g, '').trim().slice(0, 140)
+
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i)
+    if (!key?.startsWith(`${BUCKET_PREFIX}posts:`)) continue
+    const month = key.slice(`${BUCKET_PREFIX}posts:`.length)
+    const bucket = _loadBucket<PostsBucket>('posts', month)
+    if (!bucket) continue
+    const idx = bucket.posts.findIndex(p => p.cid === oldCid)
+    if (idx < 0) continue
+
+    bucket.posts[idx] = {
+      ...bucket.posts[idx],
+      cid: newCid,
+      title,
+      caption,
+      updatedAt: Date.now(),
+    }
+
+    const bucketCid = await _publishBucket('posts', month, bucket)
+    manifest.posts[month] = bucketCid
+    manifest.updatedAt = Date.now()
+    _saveBucket('posts', month, bucket)
+    const manifestCid = await _publishManifest(manifest)
+    _saveManifest(manifest)
+    return manifestCid
+  }
+
+  throw new Error(`Post not found: ${oldCid}`)
 }
 
 // ── Likes ─────────────────────────────────────────────────────────────────────

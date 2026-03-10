@@ -1,9 +1,13 @@
 import QRCode from 'qrcode'
 import jsQR from 'jsqr'
-import { getMyPeerId, loadManifest, followPeer, unfollowPeer, setDisplayName } from '../services/profile'
+import { getMyPeerId, loadManifest, followPeer, unfollowPeer, setDisplayName, getAllMyPosts, getAllMyLikes, deletePost, resolveFollowedPeer, fetchPeerInteractions, recentMonths } from '../services/profile'
+import type { WallPost } from '../services/profile'
+import { catBytes } from '../services/ipfs'
 import { hasPinataJwt, setPinataJwt, clearPinataJwt, getPinataGateway, setPinataGateway, clearPinataGateway } from '../services/pinning'
 import { getTheme, setTheme } from '../main'
 import type { ThemeChoice } from '../main'
+
+type TabName = 'profile' | 'posts' | 'settings'
 
 const STYLES = `
   :host {
@@ -15,7 +19,7 @@ const STYLES = `
   .view {
     display: flex;
     flex-direction: column;
-    gap: 2rem;
+    gap: 1rem;
     padding-top: 0.5rem;
   }
 
@@ -27,47 +31,49 @@ const STYLES = `
     color: var(--text-secondary);
   }
 
-  /* ── Profile section ───────────────── */
-  .profile-card {
+  /* ── Profile header (always visible) ─── */
+  .profile-header {
     display: flex;
-    flex-direction: column;
     align-items: center;
     gap: 1rem;
-    padding: 1.5rem;
+    padding: 1rem 1.5rem;
     background: var(--surface-raised);
     border: 1px solid var(--border);
     border-radius: var(--radius-xl);
     box-shadow: var(--shadow-input);
   }
 
-  #qr-canvas {
-    display: block;
-    border-radius: var(--radius-md);
+  .avatar {
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
     image-rendering: pixelated;
+    background: var(--surface-inset);
+    border: 2px solid var(--border);
+    object-fit: cover;
+    flex-shrink: 0;
   }
 
-  .qr-placeholder {
-    width: 200px;
-    height: 200px;
-    border-radius: var(--radius-md);
+  .avatar-placeholder {
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
     background: var(--surface-inset);
-    border: 1px dashed var(--border-medium);
+    border: 2px dashed var(--border-medium);
+    flex-shrink: 0;
+  }
+
+  .header-info {
+    flex: 1;
+    min-width: 0;
     display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 0.65rem;
-    font-family: var(--font-pixel);
-    letter-spacing: 1.5px;
-    color: var(--text-muted);
-    text-align: center;
-    padding: 1rem;
+    flex-direction: column;
+    gap: 0.4rem;
   }
 
   .name-row {
     display: flex;
     gap: 0.5rem;
-    width: 100%;
-    max-width: 360px;
   }
 
   .name-input {
@@ -86,19 +92,61 @@ const STYLES = `
   .name-input:focus { border-color: var(--accent); }
   .name-input::placeholder { color: var(--text-muted); }
 
-  .code-row {
+  /* ── QR + Peer ID (inside profile tab) ── */
+  .qr-card {
     display: flex;
     align-items: center;
+    gap: 1.25rem;
+    padding: 1.5rem;
+    background: var(--surface-raised);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-xl);
+    box-shadow: var(--shadow-input);
+  }
+
+  #qr-canvas {
+    display: block;
+    border-radius: var(--radius-md);
+    image-rendering: pixelated;
+    flex-shrink: 0;
+  }
+
+  .qr-placeholder {
+    width: 140px;
+    height: 140px;
+    border-radius: var(--radius-md);
+    background: var(--surface-inset);
+    border: 1px dashed var(--border-medium);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.55rem;
+    font-family: var(--font-pixel);
+    letter-spacing: 1.5px;
+    color: var(--text-muted);
+    text-align: center;
+    padding: 0.75rem;
+    flex-shrink: 0;
+  }
+
+  .qr-info {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
     gap: 0.5rem;
-    width: 100%;
-    max-width: 360px;
+  }
+
+  .qr-label {
+    font-family: var(--font-pixel);
+    font-size: 0.5rem;
+    letter-spacing: 2px;
+    color: var(--text-muted);
   }
 
   .code-text {
-    flex: 1;
-    min-width: 0;
     font-family: var(--font-mono);
-    font-size: 0.72rem;
+    font-size: 0.65rem;
     color: var(--text-secondary);
     background: var(--surface-inset);
     border: 1px solid var(--border);
@@ -109,6 +157,7 @@ const STYLES = `
     white-space: nowrap;
     user-select: all;
     cursor: text;
+    word-break: break-all;
   }
 
   .code-text.empty {
@@ -118,49 +167,44 @@ const STYLES = `
     font-size: 0.8rem;
   }
 
-  /* ── Add contact section ───────────── */
-  .add-card {
-    padding: 1.5rem;
+  /* ── Tab bar ───────────────────────────── */
+  .tab-bar {
+    display: flex;
+  }
+
+  .tab-btn {
+    flex: 1;
+    padding: 0.6rem 0;
+    font-family: var(--font-pixel);
+    font-size: 0.55rem;
+    letter-spacing: 2px;
+    cursor: pointer;
     background: var(--surface-raised);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-xl);
-    box-shadow: var(--shadow-input);
-  }
-
-  .input-row {
-    display: flex;
-    gap: 0.5rem;
-  }
-
-  .peer-input {
-    flex: 1;
-    font-family: var(--font-mono);
-    font-size: 0.78rem;
-    padding: 0.6rem 0.75rem;
-    background: var(--surface-inset);
-    border: 1px solid var(--border-medium);
-    border-radius: var(--radius-md);
-    color: var(--text);
-    outline: none;
-    transition: border-color 150ms;
-  }
-  .peer-input:focus { border-color: var(--accent); }
-  .peer-input::placeholder { color: var(--text-muted); font-family: var(--font-body); }
-
-  .divider {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    margin: 1rem 0;
-    font-size: 0.75rem;
     color: var(--text-muted);
+    border: 1px solid var(--border);
+    transition: color 0.15s, background 0.15s;
   }
-  .divider::before,
-  .divider::after {
-    content: '';
-    flex: 1;
-    height: 1px;
-    background: var(--border);
+  .tab-btn:first-child {
+    border-radius: var(--radius-md) 0 0 var(--radius-md);
+    border-right: none;
+  }
+  .tab-btn:nth-child(2) {
+    border-right: none;
+  }
+  .tab-btn:last-child {
+    border-radius: 0 var(--radius-md) var(--radius-md) 0;
+  }
+  .tab-btn.active {
+    background: var(--accent);
+    color: var(--text-inverse);
+    border-color: var(--accent);
+  }
+
+  .tab-panel { display: none; }
+  .tab-panel.active {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
   }
 
   /* ── Buttons ───────────────────────── */
@@ -216,6 +260,51 @@ const STYLES = `
   .status[data-state="error"] { color: #dc2626; }
   .status[data-state="info"]  { color: var(--text-secondary); }
 
+  /* ── Add contact ───────────────────── */
+  .add-card {
+    padding: 1.5rem;
+    background: var(--surface-raised);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-xl);
+    box-shadow: var(--shadow-input);
+  }
+
+  .input-row {
+    display: flex;
+    gap: 0.5rem;
+  }
+
+  .peer-input {
+    flex: 1;
+    font-family: var(--font-mono);
+    font-size: 0.78rem;
+    padding: 0.6rem 0.75rem;
+    background: var(--surface-inset);
+    border: 1px solid var(--border-medium);
+    border-radius: var(--radius-md);
+    color: var(--text);
+    outline: none;
+    transition: border-color 150ms;
+  }
+  .peer-input:focus { border-color: var(--accent); }
+  .peer-input::placeholder { color: var(--text-muted); font-family: var(--font-body); }
+
+  .divider {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin: 1rem 0;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+  }
+  .divider::before,
+  .divider::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+  }
+
   /* ── Following section ─────────────── */
   .following-card {
     padding: 1.5rem;
@@ -270,6 +359,119 @@ const STYLES = `
   .remove-btn:hover { color: #dc2626; border-color: #dc2626; }
 
   .empty-following {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    text-align: center;
+    padding: 0.5rem 0;
+  }
+
+  /* ── My Posts section ─────────── */
+  .posts-card {
+    padding: 1.5rem;
+    background: var(--surface-raised);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-xl);
+    box-shadow: var(--shadow-input);
+  }
+
+  .posts-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+  }
+
+  .post-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0.65rem;
+    background: var(--surface-inset);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+  }
+
+  .post-info {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+  }
+
+  .post-title {
+    font-family: var(--font-body);
+    font-size: 0.82rem;
+    color: var(--text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .post-date {
+    font-family: var(--font-pixel);
+    font-size: 0.45rem;
+    letter-spacing: 1px;
+    color: var(--text-muted);
+  }
+
+  .post-badge {
+    font-family: var(--font-pixel);
+    font-size: 0.4rem;
+    letter-spacing: 1px;
+    color: var(--text-muted);
+    opacity: 0.7;
+    margin-left: 0.3rem;
+  }
+
+  .post-actions {
+    display: flex;
+    gap: 0.3rem;
+    flex-shrink: 0;
+  }
+
+  .post-edit-btn,
+  .post-delete-btn {
+    flex-shrink: 0;
+    padding: 0.25rem 0.6rem;
+    font-family: var(--font-pixel);
+    font-size: 0.55rem;
+    letter-spacing: 1px;
+    cursor: pointer;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-medium);
+    background: transparent;
+    color: var(--text-muted);
+    transition: color 150ms, border-color 150ms;
+  }
+  .post-edit-btn:hover { color: var(--accent); border-color: var(--accent); }
+  .post-delete-btn:hover { color: #dc2626; border-color: #dc2626; }
+
+  .post-likes {
+    font-family: var(--font-pixel);
+    font-size: 0.45rem;
+    letter-spacing: 1px;
+    color: var(--text-muted);
+    display: flex;
+    align-items: center;
+    gap: 0.2rem;
+    flex-shrink: 0;
+  }
+  .post-likes svg {
+    width: 12px;
+    height: 12px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  .post-likes.has-likes { color: #e5395e; }
+  .post-likes.has-likes svg { fill: #e5395e; stroke: #e5395e; }
+
+  .empty-posts {
     font-size: 0.8rem;
     color: var(--text-muted);
     text-align: center;
@@ -350,14 +552,18 @@ const STYLES = `
 class AccountView extends HTMLElement {
   private _root!: ShadowRoot
   private _peerId = ''
+  private _activeTab: TabName = 'profile'
 
   connectedCallback() {
     if (this.shadowRoot) return
+    this._activeTab = (localStorage.getItem('graffiti:account-tab') as TabName) || 'profile'
     this._root = this.attachShadow({ mode: 'open' })
     this._render()
     this._loadProfile()
     this._bindName()
+    this._bindTabs()
     this._renderFollowing()
+    this._renderMyPosts()
     this._bindEvents()
     this._bindTheme()
     this._bindSettings()
@@ -367,103 +573,168 @@ class AccountView extends HTMLElement {
     this._root.innerHTML = `
       <style>${STYLES}</style>
       <div class="view">
-        <section class="profile-card">
-          <h2>MY PROFILE</h2>
-          <div id="qr-wrap">
-            <div class="qr-placeholder" id="qr-placeholder">LOADING…</div>
-          </div>
-          <div class="name-row">
-            <input class="name-input" id="name-input" type="text"
-              placeholder="Display name…" maxlength="40" autocomplete="off" spellcheck="false">
-            <button class="btn btn-primary" id="name-save-btn">SAVE</button>
-          </div>
-          <p class="status" id="name-status"></p>
-          <div class="code-row">
-            <code class="code-text empty" id="peer-id-text">loading…</code>
-            <button class="btn" id="copy-btn" disabled>COPY</button>
+        <section class="profile-header">
+          <div id="avatar-wrap"><div class="avatar-placeholder"></div></div>
+          <div class="header-info">
+            <div class="name-row">
+              <input class="name-input" id="name-input" type="text"
+                placeholder="Display name…" maxlength="40" autocomplete="off" spellcheck="false">
+              <button class="btn btn-primary" id="name-save-btn">SAVE</button>
+            </div>
+            <p class="status" id="name-status"></p>
           </div>
         </section>
 
-        <section class="add-card">
-          <h2>ADD CONTACT</h2>
-          <div class="input-row">
-            <input class="peer-input" id="peer-input" type="text"
-              placeholder="Paste share code (PeerID)…" autocomplete="off" spellcheck="false">
-            <button class="btn btn-primary" id="add-btn">ADD</button>
-          </div>
-          <p class="divider">or</p>
-          <button class="btn btn-outline" id="scan-btn">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-              stroke-linecap="round" stroke-linejoin="round">
-              <rect x="3" y="3" width="5" height="5" rx="0.5"/>
-              <rect x="16" y="3" width="5" height="5" rx="0.5"/>
-              <rect x="3" y="16" width="5" height="5" rx="0.5"/>
-              <path d="M21 16h-3v3M21 21h-2M16 21v-2M13 3v5h2M13 11h5v2M21 11v1"/>
-            </svg>
-            SCAN QR IMAGE
-          </button>
-          <input type="file" id="scan-input" accept="image/*" style="display:none">
-          <p class="status" id="add-status"></p>
-        </section>
+        <div class="tab-bar" id="tab-bar">
+          <button class="tab-btn" data-tab="profile">PROFILE</button>
+          <button class="tab-btn" data-tab="posts">POSTS</button>
+          <button class="tab-btn" data-tab="settings">SETTINGS</button>
+        </div>
 
-        <section class="following-card">
-          <h2>FOLLOWING</h2>
-          <ul class="following-list" id="following-list"></ul>
-        </section>
+        <div class="tab-panel" data-tab="profile" id="panel-profile">
+          <section class="qr-card">
+            <div id="qr-wrap">
+              <div class="qr-placeholder" id="qr-placeholder">LOADING…</div>
+            </div>
+            <div class="qr-info">
+              <span class="qr-label">IPNS HASH</span>
+              <code class="code-text empty" id="peer-id-text">loading…</code>
+              <button class="btn" id="copy-btn" disabled>COPY</button>
+            </div>
+          </section>
 
-        <section class="settings-card">
-          <h2>SETTINGS</h2>
-          <div class="theme-row" id="theme-row">
-            <button class="theme-btn" data-theme="light">LIGHT</button>
-            <button class="theme-btn" data-theme="dark">DARK</button>
-            <button class="theme-btn" data-theme="system">SYSTEM</button>
-          </div>
-          <input class="jwt-input" id="jwt-input" type="password"
-            placeholder="Pinata JWT (for remote pinning)…" autocomplete="off" spellcheck="false">
-          <div class="settings-row">
-            <button class="btn btn-primary" id="jwt-save-btn">SAVE</button>
-            <button class="btn" id="jwt-clear-btn">CLEAR</button>
-            <span class="pin-badge" id="pin-badge"></span>
-          </div>
-          <p class="status" id="jwt-status"></p>
+          <section class="add-card">
+            <h2>ADD CONTACT</h2>
+            <div class="input-row">
+              <input class="peer-input" id="peer-input" type="text"
+                placeholder="Paste share code (PeerID)…" autocomplete="off" spellcheck="false">
+              <button class="btn btn-primary" id="add-btn">ADD</button>
+            </div>
+            <p class="divider">or</p>
+            <button class="btn btn-outline" id="scan-btn">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="3" width="5" height="5" rx="0.5"/>
+                <rect x="16" y="3" width="5" height="5" rx="0.5"/>
+                <rect x="3" y="16" width="5" height="5" rx="0.5"/>
+                <path d="M21 16h-3v3M21 21h-2M16 21v-2M13 3v5h2M13 11h5v2M21 11v1"/>
+              </svg>
+              SCAN QR IMAGE
+            </button>
+            <input type="file" id="scan-input" accept="image/*" style="display:none">
+            <p class="status" id="add-status"></p>
+          </section>
 
-          <input class="jwt-input" id="gw-input" type="text"
-            placeholder="Pinata gateway (e.g. https://mygateway.mypinata.cloud)…" autocomplete="off" spellcheck="false"
-            style="margin-top: 1rem">
-          <div class="settings-row">
-            <button class="btn btn-primary" id="gw-save-btn">SAVE</button>
-            <button class="btn" id="gw-clear-btn">CLEAR</button>
-            <span class="pin-badge" id="gw-badge"></span>
-          </div>
-          <p class="status" id="gw-status"></p>
-        </section>
+          <section class="following-card">
+            <h2>FOLLOWING</h2>
+            <ul class="following-list" id="following-list"></ul>
+          </section>
+        </div>
+
+        <div class="tab-panel" data-tab="posts" id="panel-posts">
+          <section class="posts-card">
+            <h2>MY POSTS</h2>
+            <ul class="posts-list" id="posts-list"></ul>
+          </section>
+        </div>
+
+        <div class="tab-panel" data-tab="settings" id="panel-settings">
+          <section class="settings-card">
+            <h2>THEME</h2>
+            <div class="theme-row" id="theme-row">
+              <button class="theme-btn" data-theme="light">LIGHT</button>
+              <button class="theme-btn" data-theme="dark">DARK</button>
+              <button class="theme-btn" data-theme="system">SYSTEM</button>
+            </div>
+          </section>
+
+          <section class="settings-card">
+            <h2>PINATA</h2>
+            <input class="jwt-input" id="jwt-input" type="password"
+              placeholder="Pinata JWT (for remote pinning)…" autocomplete="off" spellcheck="false">
+            <div class="settings-row">
+              <button class="btn btn-primary" id="jwt-save-btn">SAVE</button>
+              <button class="btn" id="jwt-clear-btn">CLEAR</button>
+              <span class="pin-badge" id="pin-badge"></span>
+            </div>
+            <p class="status" id="jwt-status"></p>
+
+            <input class="jwt-input" id="gw-input" type="text"
+              placeholder="Pinata gateway (e.g. https://mygateway.mypinata.cloud)…" autocomplete="off" spellcheck="false"
+              style="margin-top: 1rem">
+            <div class="settings-row">
+              <button class="btn btn-primary" id="gw-save-btn">SAVE</button>
+              <button class="btn" id="gw-clear-btn">CLEAR</button>
+              <span class="pin-badge" id="gw-badge"></span>
+            </div>
+            <p class="status" id="gw-status"></p>
+          </section>
+        </div>
       </div>
     `
+  }
+
+  private _bindTabs() {
+    this._updateTabs()
+    this._root.querySelector('#tab-bar')!.addEventListener('click', (e) => {
+      const btn = (e.target as HTMLElement).closest<HTMLElement>('.tab-btn')
+      if (!btn?.dataset.tab) return
+      const next = btn.dataset.tab as TabName
+      if (next === this._activeTab) return
+      this._activeTab = next
+      try { localStorage.setItem('graffiti:account-tab', next) } catch {}
+      this._updateTabs()
+    })
+  }
+
+  private _updateTabs() {
+    this._root.querySelectorAll<HTMLElement>('.tab-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.tab === this._activeTab)
+    })
+    this._root.querySelectorAll<HTMLElement>('.tab-panel').forEach(panel => {
+      panel.classList.toggle('active', panel.dataset.tab === this._activeTab)
+    })
   }
 
   private async _loadProfile() {
     const placeholder = this._root.querySelector<HTMLElement>('#qr-placeholder')!
     const codeEl = this._root.querySelector<HTMLElement>('#peer-id-text')!
     const copyBtn = this._root.querySelector<HTMLButtonElement>('#copy-btn')!
+    const avatarWrap = this._root.querySelector<HTMLElement>('#avatar-wrap')!
 
     try {
       this._peerId = await getMyPeerId()
 
-      // Replace placeholder with an <img> (canvas loses content when display:none)
+      // Load avatar (tag.png)
+      const manifest = loadManifest()
+      if (manifest.tag) {
+        try {
+          const bytes = await catBytes(manifest.tag)
+          const blob = new Blob([bytes.buffer as ArrayBuffer], { type: 'image/png' })
+          const img = document.createElement('img')
+          img.className = 'avatar'
+          img.src = URL.createObjectURL(blob)
+          img.alt = 'My tag'
+          avatarWrap.innerHTML = ''
+          avatarWrap.appendChild(img)
+        } catch { /* tag unavailable */ }
+      }
+
+      // QR code
       const style = getComputedStyle(document.documentElement)
       const qrDark = style.getPropertyValue('--text').trim() || '#0b0b0b'
       const qrLight = style.getPropertyValue('--surface').trim() || '#fafafa'
       const dataUrl = await QRCode.toDataURL(this._peerId, {
-        width: 200,
+        width: 140,
         margin: 2,
         color: { dark: qrDark, light: qrLight },
       })
-      const img = document.createElement('img')
-      img.id = 'qr-canvas'
-      img.width = 200
-      img.height = 200
-      img.src = dataUrl
-      placeholder.replaceWith(img)
+      const qrImg = document.createElement('img')
+      qrImg.id = 'qr-canvas'
+      qrImg.width = 140
+      qrImg.height = 140
+      qrImg.src = dataUrl
+      placeholder.replaceWith(qrImg)
 
       codeEl.textContent = this._peerId
       codeEl.classList.remove('empty')
@@ -479,7 +750,6 @@ class AccountView extends HTMLElement {
     const saveBtn = this._root.querySelector<HTMLButtonElement>('#name-save-btn')!
     const status = this._root.querySelector<HTMLElement>('#name-status')!
 
-    // Pre-fill with current display name
     const manifest = loadManifest()
     if (manifest.displayName) nameInput.value = manifest.displayName
 
@@ -515,6 +785,103 @@ class AccountView extends HTMLElement {
       `
       list.appendChild(li)
     })
+  }
+
+  private _renderMyPosts() {
+    const list = this._root.querySelector<HTMLElement>('#posts-list')!
+    const posts = getAllMyPosts().sort((a, b) => b.timestamp - a.timestamp)
+    list.innerHTML = ''
+
+    if (posts.length === 0) {
+      list.innerHTML = '<li class="empty-posts">No posts yet.</li>'
+      return
+    }
+
+    const heartSvg = '<svg viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78L12 21.23l8.84-8.84a5.5 5.5 0 0 0 0-7.78z"/></svg>'
+
+    for (const post of posts) {
+      const li = document.createElement('li')
+      li.className = 'post-item'
+
+      const label = post.type === 'text'
+        ? (post.title || 'Untitled')
+        : (post.caption ? `Wall: ${post.caption}` : 'Wall post')
+      const date = new Date(post.timestamp).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+      const edited = post.updatedAt ? '<span class="post-badge">EDITED</span>' : ''
+
+      const actions = post.type === 'text'
+        ? `<button class="post-edit-btn" data-cid="${post.cid}">EDIT</button>
+           <button class="post-delete-btn" data-cid="${post.cid}">DELETE</button>`
+        : `<button class="post-delete-btn" data-cid="${post.cid}">DELETE</button>`
+
+      li.innerHTML = `
+        <div class="post-info">
+          <span class="post-title">${this._escapeHtml(label)}</span>
+          <span class="post-date">${date}${edited}</span>
+        </div>
+        <span class="post-likes" data-cid="${post.cid}">${heartSvg} <span class="count">…</span></span>
+        <div class="post-actions">${actions}</div>
+      `
+      list.appendChild(li)
+    }
+
+    list.addEventListener('click', (e) => {
+      const btn = (e.target as HTMLElement).closest<HTMLElement>('.post-delete-btn, .post-edit-btn')
+      if (!btn?.dataset.cid) return
+
+      if (btn.classList.contains('post-delete-btn')) {
+        if (!confirm('Delete this post? This cannot be undone.')) return
+        deletePost(btn.dataset.cid).then(() => this._renderMyPosts())
+          .catch(err => console.warn('[account] delete post failed:', err))
+      } else if (btn.classList.contains('post-edit-btn')) {
+        window.history.pushState({}, '', `/create?edit=${encodeURIComponent(btn.dataset.cid)}`)
+        window.dispatchEvent(new PopStateEvent('popstate'))
+      }
+    })
+
+    this._loadPostLikeCounts(posts.map(p => p.cid))
+  }
+
+  private async _loadPostLikeCounts(postCids: string[]) {
+    const counts = new Map<string, number>()
+
+    for (const l of getAllMyLikes()) {
+      if (postCids.includes(l.target)) {
+        counts.set(l.target, (counts.get(l.target) ?? 0) + 1)
+      }
+    }
+
+    const manifest = loadManifest()
+    const months = recentMonths(3)
+    const cidSet = new Set(postCids)
+
+    await Promise.all(
+      manifest.following.map(async (peerId) => {
+        try {
+          const result = await resolveFollowedPeer(peerId)
+          if (!result) return
+          const interactions = await fetchPeerInteractions(result.manifest, months)
+          for (const l of interactions.likes) {
+            if (cidSet.has(l.target)) {
+              counts.set(l.target, (counts.get(l.target) ?? 0) + 1)
+            }
+          }
+        } catch { /* skip unreachable peer */ }
+      })
+    )
+
+    for (const cid of postCids) {
+      const el = this._root.querySelector<HTMLElement>(`.post-likes[data-cid="${cid}"]`)
+      if (!el) continue
+      const total = counts.get(cid) ?? 0
+      const countSpan = el.querySelector('.count')
+      if (countSpan) countSpan.textContent = String(total)
+      if (total > 0) el.classList.add('has-likes')
+    }
+  }
+
+  private _escapeHtml(s: string): string {
+    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
   }
 
   private _bindEvents() {

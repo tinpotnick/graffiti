@@ -1,4 +1,5 @@
-import { publishTextPost, saveDraft, loadDrafts, deleteDraft, publishDraft, type DraftEntry } from '../services/profile'
+import { publishTextPost, updateTextPost, saveDraft, loadDrafts, deleteDraft, publishDraft, getAllMyPosts, type DraftEntry } from '../services/profile'
+import { catJson } from '../services/ipfs'
 
 type MdEditorElement = HTMLElement & { value: string };
 type EditorChangeEvent = CustomEvent<{ value: string }>;
@@ -172,6 +173,7 @@ class CreateView extends HTMLElement {
   private postTitle = "";
   private markdown = "";
   private activeDraftId: string | null = null;
+  private editingPostCid: string | null = null;
 
   private titleInput: HTMLInputElement | null = null;
   private editor: MdEditorElement | null = null;
@@ -214,7 +216,9 @@ class CreateView extends HTMLElement {
       if (!this.postTitle && !this.markdown.trim()) return;
       this.publishButton?.setAttribute("disabled", "");
       try {
-        if (this.activeDraftId) {
+        if (this.editingPostCid) {
+          await updateTextPost(this.editingPostCid, this.postTitle, this.markdown);
+        } else if (this.activeDraftId) {
           await publishDraft(this.activeDraftId);
         } else {
           await publishTextPost(this.postTitle, this.markdown);
@@ -247,20 +251,62 @@ class CreateView extends HTMLElement {
     this.publishButton!.addEventListener("click", this.onPublish);
     this.saveButton!.addEventListener("click", this.onSave);
     this._renderDrafts();
+    this._checkEditParam();
+
+    window.addEventListener('route-change', this._onRouteChange);
+  }
+
+  private _onRouteChange = (e: Event) => {
+    const { pathname } = (e as CustomEvent).detail;
+    if (pathname === '/create') this._checkEditParam();
+  };
+
+  private _checkEditParam() {
+    const params = new URLSearchParams(window.location.search);
+    const editCid = params.get('edit');
+    if (editCid && editCid !== this.editingPostCid) {
+      this._loadEditPost(editCid);
+    }
+  }
+
+  private async _loadEditPost(cid: string) {
+    // Find post metadata in local buckets
+    const allPosts = getAllMyPosts();
+    const post = allPosts.find(p => p.cid === cid);
+    if (!post || post.type !== 'text') return;
+
+    try {
+      const content = await catJson<{ title: string; markdown: string }>(cid);
+      this.editingPostCid = cid;
+      this.activeDraftId = null;
+      this.postTitle = content.title;
+      this.markdown = content.markdown;
+      if (this.titleInput) this.titleInput.value = content.title;
+      if (this.editor) this.editor.value = content.markdown;
+      if (this.publishButton) this.publishButton.textContent = "Update";
+      if (this.saveButton) this.saveButton.style.display = "none";
+      this._renderDrafts();
+    } catch (err) {
+      console.error("[create] load post for edit failed:", err);
+    }
   }
 
   disconnectedCallback() {
     this.editor?.removeEventListener("markdown-change", this.onEditorChange);
     this.publishButton?.removeEventListener("click", this.onPublish);
     this.saveButton?.removeEventListener("click", this.onSave);
+    window.removeEventListener('route-change', this._onRouteChange);
   }
 
   private _clearEditor() {
     this.postTitle = "";
     this.markdown = "";
     this.activeDraftId = null;
+    this.editingPostCid = null;
     if (this.titleInput) this.titleInput.value = "";
     if (this.editor) this.editor.value = "";
+    if (this.publishButton) this.publishButton.textContent = "Publish";
+    if (this.saveButton) this.saveButton.style.display = "";
     this._renderDrafts();
   }
 

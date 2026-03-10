@@ -33,6 +33,8 @@ export interface FeedPost {
   displayName?: string
   /** Display name of the person who really-liked. */
   reallyLikedByName?: string
+  /** When the post was last edited (epoch ms). */
+  updatedAt?: number
 }
 
 const STYLES = `
@@ -312,9 +314,10 @@ class FeedItem extends HTMLElement {
   private _render() {
     if (!this._root) return
     const { caption, timestamp, peerId, bounds, wallRef, wallBounds, type, title, cid,
-            myInteraction, likeCount, reallyLikeCount, reallyLikedBy, displayName, reallyLikedByName } = this._post
+            myInteraction, likeCount, reallyLikeCount, reallyLikedBy, displayName, reallyLikedByName, updatedAt } = this._post
     const shortId = displayName || (peerId.length > 16 ? `${peerId.slice(0, 8)}…${peerId.slice(-6)}` : peerId)
     const timeStr = timestamp ? relativeTime(timestamp) : ''
+    const editedBadge = updatedAt ? '<span class="stale-badge">EDITED</span>' : ''
     const isText = type === 'text'
 
     // Own wall → EDIT; other walls → TAG THIS
@@ -374,6 +377,7 @@ class FeedItem extends HTMLElement {
             <div class="meta-text">
               <span>${shortId}</span>
               ${staleBadge}
+              ${editedBadge}
               ${tagLink}
               <span>${timeStr}</span>
             </div>
