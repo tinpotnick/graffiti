@@ -118,9 +118,23 @@ The local blockstore is IndexedDB-backed, so the node's identity persists across
 
 See [IPFS.md](IPFS.md) for architecture details, non-standard choices, self-hosting guidance, and alternative pinning providers.
 
-## Mobile
+## Android
 
-Tauri 2 supports Android and iOS. The bundled Kubo sidecar approach works on desktop (Linux, macOS, Windows). Mobile support is planned: Android can run Kubo as a foreground service; iOS will connect to a remote node you own. Desktop is the initial target.
+### First-time setup (one-time, then commit):
+```sh
+./scripts/android-build.sh --init
+git add src-tauri/gen/android/
+git commit -m "tauri android init"
+```
+
+### Build debug APK:
+```sh
+./scripts/android-build.sh
+```
+
+Output: `src-tauri/gen/android/app/build/outputs/apk/`
+
+The first build is slow (~15-30 min) — it downloads the Android SDK/NDK inside Docker and cross-compiles Rust for 4 Android architectures. Subsequent builds are cached and much faster.
 
 ## Troubleshooting
 

@@ -85,6 +85,7 @@ services:
       - NDK_HOME=/opt/android-sdk/ndk/27.2.12479018
       - JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
       - CARGO_HOME=/home/cargo
+      - COREPACK_ENABLE_AUTO_PIN=0
     volumes:
       - .:/app:z
       - node_modules:/app/node_modules
@@ -104,13 +105,14 @@ services:
       corepack enable &&
       pnpm config set store-dir /pnpm/store &&
       pnpm install --no-frozen-lockfile &&
-      pnpm tauri android build --apk
+      pnpm tauri android build --apk true --debug
       "
     environment:
       - ANDROID_HOME=/opt/android-sdk
       - NDK_HOME=/opt/android-sdk/ndk/27.2.12479018
       - JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
       - CARGO_HOME=/home/cargo
+      - COREPACK_ENABLE_AUTO_PIN=0
     volumes:
       - .:/app:z
       - node_modules:/app/node_modules
