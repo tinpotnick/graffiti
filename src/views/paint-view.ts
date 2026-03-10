@@ -723,13 +723,15 @@ class PaintView extends HTMLElement {
         return;
       }
 
-      if (t.dataset.action === "shape-mode") { this._toggleShapeMode(); return; }
-      if (t.dataset.action === "mirror") { this._toggleMirror(); return; }
-      if (t.dataset.action === "undo")   { this._canvas.undo(); return; }
-      if (t.dataset.action === "redo")   { this._canvas.redo(); return; }
-      if (t.dataset.action === "clear")  { this._canvas.clear(); return; }
+      const action = t.dataset.action ?? t.closest<HTMLElement>("[data-action]")?.dataset.action;
 
-      if (t.dataset.action === "download") {
+      if (action === "shape-mode") { this._toggleShapeMode(); return; }
+      if (action === "mirror") { this._toggleMirror(); return; }
+      if (action === "undo")   { this._canvas.undo(); return; }
+      if (action === "redo")   { this._canvas.redo(); return; }
+      if (action === "clear")  { this._canvas.clear(); return; }
+
+      if (action === "download") {
         const a = document.createElement("a");
         a.href = this._canvas.toDataURL();
         a.download = `graffiti-${this._mode}-${Date.now()}.png`;
@@ -737,12 +739,12 @@ class PaintView extends HTMLElement {
         return;
       }
 
-      if (t.dataset.action === "import") {
+      if (action === "import") {
         this._shadow.querySelector<HTMLInputElement>("#import-input")!.click();
         return;
       }
 
-      if (t.dataset.action === "publish") {
+      if (action === "publish") {
         this._publishCanvas();
         return;
       }
