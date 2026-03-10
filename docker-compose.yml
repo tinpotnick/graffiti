@@ -65,6 +65,60 @@ services:
       # Build artefacts — bind-mounted so the binary is accessible on the host.
       - ./.docker-cache/tauri_target:/app/src-tauri/target:z
 
+  # ── Android: one-time init (generates src-tauri/gen/android/) ────────────────
+  # Run once: docker compose run --rm android-init
+  # Then commit the generated src-tauri/gen/android/ directory.
+  android-init:
+    build:
+      context: .
+      dockerfile: Dockerfile.android
+    working_dir: /app
+    command: >
+      bash -lc "
+      corepack enable &&
+      pnpm config set store-dir /pnpm/store &&
+      pnpm install --no-frozen-lockfile &&
+      pnpm tauri android init
+      "
+    environment:
+      - ANDROID_HOME=/opt/android-sdk
+      - NDK_HOME=/opt/android-sdk/ndk/27.2.12479018
+      - JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+      - CARGO_HOME=/home/cargo
+    volumes:
+      - .:/app:z
+      - node_modules:/app/node_modules
+      - pnpm_store:/pnpm/store
+      - ./.docker-cache/cargo:/home/cargo:z
+
+  # ── Android: build APK ─────────────────────────────────────────────────────
+  # Usage: docker compose run --rm android-build
+  # Output: src-tauri/gen/android/app/build/outputs/apk/
+  android-build:
+    build:
+      context: .
+      dockerfile: Dockerfile.android
+    working_dir: /app
+    command: >
+      bash -lc "
+      corepack enable &&
+      pnpm config set store-dir /pnpm/store &&
+      pnpm install --no-frozen-lockfile &&
+      pnpm tauri android build --apk
+      "
+    environment:
+      - ANDROID_HOME=/opt/android-sdk
+      - NDK_HOME=/opt/android-sdk/ndk/27.2.12479018
+      - JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+      - CARGO_HOME=/home/cargo
+    volumes:
+      - .:/app:z
+      - node_modules:/app/node_modules
+      - pnpm_store:/pnpm/store
+      - ./.docker-cache/cargo:/home/cargo:z
+      - ./.docker-cache/gradle:/root/.gradle:z
+      - ./.docker-cache/android_target:/app/src-tauri/target:z
+
   # ── Local IPFS node (dev/test only) ──────────────────────────────────────────
   # Not required to run the app. Use for inspecting published CIDs and system tests.
   # CLI: docker compose exec ipfs-dev ipfs cat <cid>

@@ -10,3 +10,9 @@ node_modules
 !.env.example
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
+
+# Android build outputs (gen/android/ source is committed)
+src-tauri/gen/android/.gradle/
+src-tauri/gen/android/app/build/
+src-tauri/gen/android/build/
+src-tauri/gen/android/local.properties
