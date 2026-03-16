@@ -77,15 +77,30 @@ const STYLES = `
   }
 
   .back-link {
-    display: inline-block;
-    margin-bottom: 0.5rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin-bottom: 0.75rem;
     font-family: var(--font-pixel);
-    font-size: 0.5rem;
+    font-size: 0.6rem;
     letter-spacing: 1.5px;
     color: var(--text-muted);
     text-decoration: none;
+    cursor: pointer;
+    background: var(--surface-raised);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-pill, 999px);
+    padding: 0.5rem 1rem;
+    transition: color 0.15s, border-color 0.15s;
+    -webkit-tap-highlight-color: transparent;
   }
-  .back-link:hover { color: var(--text); }
+  .back-link:hover {
+    color: var(--text);
+    border-color: var(--text-muted);
+  }
+  .back-link:active {
+    transform: scale(0.97);
+  }
 
   .status {
     text-align: center;
@@ -105,6 +120,10 @@ class PostView extends HTMLElement {
     this._root = this.attachShadow({ mode: 'open' })
     this._root.innerHTML = `<style>${STYLES}</style><div class="status">LOADING…</div>`
     this._load()
+    this._root.addEventListener('click', (e) => {
+      const btn = (e.target as HTMLElement).closest('#back-btn')
+      if (btn) { e.preventDefault(); history.back() }
+    })
   }
 
   private async _load() {
@@ -114,7 +133,7 @@ class PostView extends HTMLElement {
     const peerId = params.get('peer') || ''
 
     if (!cid) {
-      this._root.innerHTML = `<style>${STYLES}</style><a class="back-link" href="/">← BACK</a><div class="status">NO POST CID</div>`
+      this._root.innerHTML = `<style>${STYLES}</style><button class="back-link" id="back-btn">← BACK</button><div class="status">NO POST CID</div>`
       return
     }
 
@@ -126,7 +145,7 @@ class PostView extends HTMLElement {
 
       this._root.innerHTML = `
         <style>${STYLES}</style>
-        <a class="back-link" href="/">← BACK</a>
+        <button class="back-link" id="back-btn">← BACK</button>
         <article class="post">
           ${post.title ? `<h1 class="post-title">${md.utils.escapeHtml(post.title)}</h1>` : ''}
           <div class="post-meta">${shortId}${timeStr ? ` · ${timeStr}` : ''}</div>
@@ -135,7 +154,7 @@ class PostView extends HTMLElement {
       `
     } catch (err) {
       console.error('[post-view] Failed to load post:', err)
-      this._root.innerHTML = `<style>${STYLES}</style><a class="back-link" href="/">← BACK</a><div class="status">FAILED TO LOAD POST</div>`
+      this._root.innerHTML = `<style>${STYLES}</style><button class="back-link" id="back-btn">← BACK</button><div class="status">FAILED TO LOAD POST</div>`
     }
   }
 }

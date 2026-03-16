@@ -14,8 +14,9 @@ Identity is the node's Ed25519 keypair. The PeerID derived from this key doubles
 IPNS name (PeerID)
   └─► root manifest CID (small JSON, ~1KB)
         ├── tag: "<CID>"                    ← 64×64 avatar PNG
-        ├── posts: { "2026-03": "<CID>", …} ← CID pointers to monthly post buckets
-        ├── likes: { "2026-03": "<CID>", …} ← CID pointers to monthly like buckets
+        ├── posts: { "2026-03": "<CID>", …}     ← CID pointers to monthly post buckets
+        ├── likes: { "2026-03": "<CID>", …}     ← CID pointers to monthly like buckets
+        ├── bookmarks: { "2026-03": "<CID>", …} ← CID pointers to monthly bookmark buckets
         ├── following: ["<PeerID>", …]
         └── displayName, updatedAt, version: 2
 
@@ -25,6 +26,9 @@ Monthly post bucket (e.g. posts/2026-03):
 Monthly like bucket (e.g. likes/2026-03):
   { month: "2026-03", likes: [{ target, author, timestamp, strength }] }
   strength: 1 = like, 2 = really like (mutually exclusive)
+
+Monthly bookmark bucket (e.g. bookmarks/2026-03):
+  { month: "2026-03", bookmarks: [{ target, author, timestamp }] }
 ```
 
 IPNS points to a small root manifest containing CID pointers to monthly bucket files. When a like is added, only the affected month's bucket and the root manifest are re-published — peers who already have older months cached don't need to re-fetch them (same CIDs, content-addressed and immutable).
@@ -161,6 +165,43 @@ Any service that supports the [IPFS Pinning Services API](https://ipfs.github.io
 | Self-hosted Kubo | See above. Full control, no limits. |
 
 Adding support for multiple providers would mean abstracting `src/services/pinning.ts` behind a provider interface — each provider implements `pinFile(data, name)` with its own auth and endpoint.
+
+## Content replication via engagement
+
+Likes and bookmarks serve a dual purpose: social signal and content replication. When a user views content, the bytes are already in their local Helia blockstore. Liking or bookmarking that content pins it — keeping it available from their node and (selectively) uploading it to their Pinata account.
+
+### How it works
+
+1. **User views a post** — Helia fetches the content bytes into IndexedDB (passive cache)
+2. **User bookmarks or really-likes** — the content CID is re-pinned to their Pinata account via `_repinContent()`
+3. **The content now lives on multiple nodes** — the author's node/Pinata, plus every user who bookmarked or really-liked it
+
+This creates a demand-driven CDN: popular content gets replicated across more nodes proportional to engagement. A post that 200 people really-like is served from 200+ sources, not just the author's single node.
+
+### Pinning tiers
+
+| Tier | Content | Local pin | Remote pin (Pinata) |
+|------|---------|-----------|---------------------|
+| Own content | Your posts, avatar, manifest | Always | Always |
+| Bookmarks | Explicitly saved for later | Yes (already fetched) | Yes |
+| Really-likes (strength 2) | Strong endorsement | Yes (already fetched) | Yes |
+| Regular likes (strength 1) | Light endorsement | Cached by Helia | No |
+| Viewed content | Scrolled past in feed | Cached by Helia | No |
+
+### Cost implications
+
+Remote pinning has real costs (Pinata free tier: 500 files). The tiered approach limits remote pins to content the user explicitly engaged with — bookmarks and really-likes. Regular likes and passive views only benefit from local Helia caching, which is free but ephemeral (browser may evict IndexedDB under storage pressure).
+
+### Discovery through engagement
+
+Bookmarks and likes are public in the manifest. When user A follows user B:
+
+- A sees B's posts (direct content)
+- A sees B's likes and bookmarks (discovered content)
+- A discovers user C through B's engagement with C's posts
+- A can follow C, extending the social graph
+
+Each hop through the social graph adds another potential replica of popular content.
 
 ## Future considerations
 

@@ -1,10 +1,10 @@
 import {
   loadManifest, getMyPeerId, resolveFollowedPeer,
-  fetchPeerPostBuckets, fetchPeerInteractions,
-  recentMonths, getAllMyPosts, getAllMyLikes,
-  likePost, unlikePost,
+  fetchPeerPostBuckets, fetchPeerInteractions, fetchPeerBookmarks,
+  recentMonths, getAllMyPosts, getAllMyLikes, getAllMyBookmarks,
+  likePost, unlikePost, bookmarkPost, unbookmarkPost,
 } from '../services/profile'
-import type { LikeRecord, ResolvedManifest } from '../services/profile'
+import type { LikeRecord, BookmarkRecord, ResolvedManifest } from '../services/profile'
 import type { FeedPost } from '../components/feed-item'
 import type { WallScrollElement } from '../components/wall-scroll'
 
@@ -93,6 +93,7 @@ class HomeView extends HTMLElement {
     this._updateToggle()
     this._bindToggle()
     this._bindInteractions()
+    this._bindBookmarks()
     this._loadFeed()
     this._refreshTimer = setInterval(() => this._loadFeed(), REFRESH_INTERVAL)
 
@@ -155,6 +156,31 @@ class HomeView extends HTMLElement {
     })
   }
 
+  private _bindBookmarks() {
+    this._root.addEventListener('post-bookmark', (e: Event) => {
+      const { target, author, bookmarked } = (e as CustomEvent).detail as {
+        target: string; author: string; bookmarked: boolean
+      }
+
+      // Optimistic UI update
+      this._root.querySelectorAll('feed-item').forEach((el) => {
+        const item = el as FeedItemElement
+        if (item.post.cid !== target) return
+        item.post = { ...item.post, bookmarked }
+      })
+
+      for (const post of this._posts) {
+        if (post.cid === target) post.bookmarked = bookmarked
+      }
+
+      // Persist to IPFS in background
+      const op = bookmarked
+        ? bookmarkPost(target, author)
+        : unbookmarkPost(target)
+      op.catch(err => console.warn('[home] Bookmark publish failed:', err))
+    })
+  }
+
   private async _loadFeed() {
     try {
       const manifest = loadManifest()
@@ -167,6 +193,10 @@ class HomeView extends HTMLElement {
       const myLikes = getAllMyLikes()
       const myLikeMap = new Map<string, LikeRecord>()
       for (const l of myLikes) myLikeMap.set(l.target, l)
+
+      const myBookmarks = getAllMyBookmarks()
+      const myBookmarkSet = new Set<string>()
+      for (const b of myBookmarks) myBookmarkSet.add(b.target)
 
       // Build FeedPost[] from own posts
       const posts: FeedPost[] = myPosts.map(p => ({
@@ -183,6 +213,7 @@ class HomeView extends HTMLElement {
         wallRef: p.wallRef,
         wallBounds: p.wallBounds,
         myInteraction: (myLikeMap.get(p.cid)?.strength ?? 0) as 0 | 1 | 2,
+        bookmarked: myBookmarkSet.has(p.cid),
       }))
 
       // ── Interaction counts ──
@@ -245,6 +276,7 @@ class HomeView extends HTMLElement {
             stale: pr.stale,
             resolvedAt: pr.resolvedAt,
             myInteraction: (myLikeMap.get(p.cid)?.strength ?? 0) as 0 | 1 | 2,
+            bookmarked: myBookmarkSet.has(p.cid),
           })
         }
 

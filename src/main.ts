@@ -11,6 +11,7 @@ import { definePaintCanvas } from "./components/paint-canvas";
 import { definePaintView } from "./views/paint-view";
 import { defineAccountView } from "./views/account-view";
 import { definePostView } from "./views/post-view";
+import { defineSavedView } from "./views/saved-view";
 import { defineWallScroll } from "./components/wall-scroll";
 
 /* ── Theme ──────────────────────────────────────── */
@@ -52,6 +53,7 @@ definePaintCanvas();
 definePaintView();
 defineAccountView();
 definePostView();
+defineSavedView();
 defineAppShell();
 
 // Debug helpers — accessible from browser console as graffiti.*

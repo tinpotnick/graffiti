@@ -35,6 +35,8 @@ export interface FeedPost {
   reallyLikedByName?: string
   /** When the post was last edited (epoch ms). */
   updatedAt?: number
+  /** Whether the local user has bookmarked this post. */
+  bookmarked?: boolean
 }
 
 const STYLES = `
@@ -233,6 +235,42 @@ const STYLES = `
     padding-left: 0.2rem;
   }
 
+  .bookmark-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.2rem;
+    margin-left: auto;
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--text-muted);
+    transition: color 0.15s, transform 0.1s;
+  }
+  .bookmark-btn:hover {
+    color: var(--text);
+  }
+  .bookmark-btn:active {
+    transform: scale(0.85);
+  }
+  .bookmark-btn svg {
+    width: 18px;
+    height: 18px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    transition: fill 0.15s;
+  }
+  .bookmark-btn.lit {
+    color: var(--accent);
+  }
+  .bookmark-btn.lit svg {
+    fill: var(--accent);
+    stroke: var(--accent);
+  }
+
   .really-liked-banner {
     display: flex;
     align-items: center;
@@ -356,6 +394,7 @@ class FeedItem extends HTMLElement {
 
     const interaction = myInteraction ?? 0
     const totalCount = (likeCount ?? 0) + (reallyLikeCount ?? 0)
+    const isBookmarked = this._post.bookmarked ?? false
 
     const reallyLikedBanner = reallyLikedBy
       ? `<div class="really-liked-banner">
@@ -390,6 +429,9 @@ class FeedItem extends HTMLElement {
               <svg viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78L12 21.23l8.84-8.84a5.5 5.5 0 0 0 0-7.78z"/></svg>
             </button>
             ${totalCount ? `<span class="like-count">${totalCount}</span>` : ''}
+            <button class="bookmark-btn ${isBookmarked ? 'lit' : ''}" id="bookmark-btn" title="Bookmark">
+              <svg viewBox="0 0 24 24"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
+            </button>
           </div>
         </div>
       </article>
@@ -418,9 +460,16 @@ class FeedItem extends HTMLElement {
       const span = document.createElement('span')
       span.className = 'like-count'
       span.textContent = String(totalCount)
-      this._root.querySelector('.like-group')?.appendChild(span)
+      // Insert before bookmark button
+      const bookmarkBtn = this._root.querySelector('#bookmark-btn')
+      this._root.querySelector('.like-group')?.insertBefore(span, bookmarkBtn)
     } else if (!totalCount && countEl) {
       countEl.remove()
+    }
+
+    const bookmarkBtn = this._root.querySelector('#bookmark-btn')
+    if (bookmarkBtn) {
+      bookmarkBtn.className = `bookmark-btn ${this._post.bookmarked ? 'lit' : ''}`
     }
   }
 
@@ -429,6 +478,7 @@ class FeedItem extends HTMLElement {
 
     const likeBtn = this._root.querySelector('#like-btn')
     const reallyLikeBtn = this._root.querySelector('#really-like-btn')
+    const bookmarkBtn = this._root.querySelector('#bookmark-btn')
     const article = this._root.querySelector('article')
 
     likeBtn?.addEventListener('click', (e) => {
@@ -445,6 +495,19 @@ class FeedItem extends HTMLElement {
       // 0 → 2 (really like), 1 → 2 (upgrade), 2 → 0 (unlike)
       const next = current === 2 ? 0 : 2
       this._dispatchInteraction(next as 0 | 1 | 2)
+    })
+
+    bookmarkBtn?.addEventListener('click', (e) => {
+      e.stopPropagation()
+      this.dispatchEvent(new CustomEvent('post-bookmark', {
+        bubbles: true,
+        composed: true,
+        detail: {
+          target: this._post.cid,
+          author: this._post.peerId,
+          bookmarked: !this._post.bookmarked,
+        },
+      }))
     })
 
     // Double-tap on article → really like

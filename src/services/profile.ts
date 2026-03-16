@@ -11,7 +11,7 @@
  * re-download all posts.
  */
 
-import { addBytes, addJson, getNodeId, publish, resolve, catJson, serializeIPNSRecord, type IPNSRecord } from './ipfs'
+import { addBytes, addJson, getNodeId, publish, resolve, catJson, catBytes, serializeIPNSRecord, type IPNSRecord } from './ipfs'
 import { pinFile } from './pinning'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -56,6 +56,14 @@ export interface LikeRecord {
   strength: 1 | 2
 }
 
+export interface BookmarkRecord {
+  /** CID of the bookmarked content. */
+  target: string
+  /** PeerID of the original content author. */
+  author: string
+  timestamp: number
+}
+
 export interface PostsBucket {
   month: YearMonth
   posts: WallPost[]
@@ -64,6 +72,11 @@ export interface PostsBucket {
 export interface LikesBucket {
   month: YearMonth
   likes: LikeRecord[]
+}
+
+export interface BookmarksBucket {
+  month: YearMonth
+  bookmarks: BookmarkRecord[]
 }
 
 export interface DraftEntry {
@@ -102,6 +115,8 @@ export interface WallManifest {
   posts: BucketIndex
   /** CID pointers to monthly like files, keyed by year-month. */
   likes: BucketIndex
+  /** CID pointers to monthly bookmark files, keyed by year-month. */
+  bookmarks: BucketIndex
   /** CID of the drafts bucket (optional, omitted if no drafts). */
   drafts?: string
   /** Cached signed IPNS records for followed peers (peerId → base64 marshaled record). */
@@ -141,11 +156,11 @@ export function recentMonths(count: number = 2): YearMonth[] {
 
 // ── Bucket localStorage helpers ───────────────────────────────────────────────
 
-function _saveBucket<T>(kind: 'posts' | 'likes', month: YearMonth, data: T): void {
+function _saveBucket<T>(kind: 'posts' | 'likes' | 'bookmarks', month: YearMonth, data: T): void {
   try { localStorage.setItem(`${BUCKET_PREFIX}${kind}:${month}`, JSON.stringify(data)) } catch { /* unavailable */ }
 }
 
-function _loadBucket<T>(kind: 'posts' | 'likes', month: YearMonth): T | null {
+function _loadBucket<T>(kind: 'posts' | 'likes' | 'bookmarks', month: YearMonth): T | null {
   try {
     const s = localStorage.getItem(`${BUCKET_PREFIX}${kind}:${month}`)
     return s ? JSON.parse(s) as T : null
@@ -162,7 +177,7 @@ const DEFAULT_FOLLOWS = [
 function emptyManifest(): WallManifest {
   const myPeerId = localStorage.getItem(PEER_ID_KEY) ?? ''
   const following = DEFAULT_FOLLOWS.filter(id => id !== myPeerId)
-  return { version: 2, displayName: '', tag: '', following, posts: {}, likes: {}, updatedAt: 0 }
+  return { version: 2, displayName: '', tag: '', following, posts: {}, likes: {}, bookmarks: {}, updatedAt: 0 }
 }
 
 export function loadManifest(): WallManifest {
@@ -171,7 +186,9 @@ export function loadManifest(): WallManifest {
     if (s) {
       const raw = JSON.parse(s)
       if (raw.version === 1) return _migrateV1toV2(raw as WallManifestV1)
-      return raw as WallManifest
+      const m = raw as WallManifest
+      if (!m.bookmarks) m.bookmarks = {}  // backfill for pre-bookmark manifests
+      return m
     }
   } catch { /* unavailable */ }
   return emptyManifest()
@@ -205,6 +222,7 @@ function _migrateV1toV2(v1: WallManifestV1): WallManifest {
     following: v1.following,
     posts: {},   // CIDs assigned on first publish via _ensureBucketsCidified
     likes: {},
+    bookmarks: {},
     peerRecords: v1.peerRecords,
     updatedAt: v1.updatedAt,
   }
@@ -276,10 +294,23 @@ export async function getMyPeerId(): Promise<string> {
   return node.id
 }
 
+// ── Content re-pinning (replication) ──────────────────────────────────────────
+
+/**
+ * Re-pin content to the user's Pinata account.
+ * This replicates liked/bookmarked content so it's served from more nodes.
+ * Fire-and-forget — failures are logged but don't block the interaction.
+ */
+function _repinContent(cid: string): void {
+  catBytes(cid)
+    .then(bytes => pinFile(bytes, `repin-${cid.slice(-8)}`, cid))
+    .catch(e => console.warn('[profile] repin failed for', cid, e))
+}
+
 // ── Bucket IPFS publishing ────────────────────────────────────────────────────
 
 /** Serialize a monthly bucket to IPFS and pin. Returns CID string. */
-async function _publishBucket(kind: 'posts' | 'likes', month: YearMonth, data: unknown): Promise<string> {
+async function _publishBucket(kind: 'posts' | 'likes' | 'bookmarks', month: YearMonth, data: unknown): Promise<string> {
   const json = JSON.stringify(data, null, 2)
   const bytes = new TextEncoder().encode(json)
   const cid = await addBytes(bytes)
@@ -318,6 +349,17 @@ async function _ensureBucketsCidified(manifest: WallManifest): Promise<boolean> 
         const bucket = _loadBucket<LikesBucket>('likes', month)
         if (bucket && bucket.likes.length > 0) {
           manifest.likes[month] = await _publishBucket('likes', month, bucket)
+          changed = true
+        }
+      }
+    }
+
+    if (key.startsWith(`${BUCKET_PREFIX}bookmarks:`)) {
+      const month = key.slice(`${BUCKET_PREFIX}bookmarks:`.length)
+      if (!manifest.bookmarks[month]) {
+        const bucket = _loadBucket<BookmarksBucket>('bookmarks', month)
+        if (bucket && bucket.bookmarks.length > 0) {
+          manifest.bookmarks[month] = await _publishBucket('bookmarks', month, bucket)
           changed = true
         }
       }
@@ -534,6 +576,10 @@ export async function likePost(targetCid: string, authorPeerId: string, strength
   _saveBucket('likes', month, bucket)
   const manifestCid = await _publishManifest(manifest)
   _saveManifest(manifest)
+
+  // Re-pin "really liked" content to Pinata for network replication
+  if (strength === 2) _repinContent(targetCid)
+
   return manifestCid
 }
 
@@ -563,6 +609,105 @@ function _findInteractionMonth(manifest: WallManifest, targetCid: string): YearM
     if (bucket && bucket.likes.some(l => l.target === targetCid)) return month
   }
   return null
+}
+
+// ── Bookmarks ─────────────────────────────────────────────────────────────────
+
+/**
+ * Bookmark a post. Idempotent — no-ops if already bookmarked.
+ * Returns the manifest CID, or empty string if no change.
+ */
+export async function bookmarkPost(targetCid: string, authorPeerId: string): Promise<string> {
+  const manifest = loadManifest()
+
+  // Check if already bookmarked
+  if (_findBookmarkMonth(manifest, targetCid)) return ''
+
+  const month = yearMonth()
+  const bucket = _loadBucket<BookmarksBucket>('bookmarks', month) ?? { month, bookmarks: [] }
+
+  const record: BookmarkRecord = {
+    target: targetCid,
+    author: authorPeerId,
+    timestamp: Date.now(),
+  }
+  bucket.bookmarks = [record, ...bucket.bookmarks]
+
+  const bucketCid = await _publishBucket('bookmarks', month, bucket)
+  manifest.bookmarks[month] = bucketCid
+  manifest.updatedAt = Date.now()
+
+  _saveBucket('bookmarks', month, bucket)
+  const manifestCid = await _publishManifest(manifest)
+  _saveManifest(manifest)
+
+  // Re-pin bookmarked content to Pinata for network replication
+  _repinContent(targetCid)
+
+  return manifestCid
+}
+
+/** Remove a bookmark. Returns the manifest CID, or empty string if not found. */
+export async function unbookmarkPost(targetCid: string): Promise<string> {
+  const manifest = loadManifest()
+  const month = _findBookmarkMonth(manifest, targetCid)
+  if (!month) return ''
+
+  const bucket = _loadBucket<BookmarksBucket>('bookmarks', month)!
+  bucket.bookmarks = bucket.bookmarks.filter(b => b.target !== targetCid)
+
+  const bucketCid = await _publishBucket('bookmarks', month, bucket)
+  manifest.bookmarks[month] = bucketCid
+  manifest.updatedAt = Date.now()
+
+  _saveBucket('bookmarks', month, bucket)
+  const manifestCid = await _publishManifest(manifest)
+  _saveManifest(manifest)
+  return manifestCid
+}
+
+/** Find which month contains a bookmark for a given target CID. */
+function _findBookmarkMonth(manifest: WallManifest, targetCid: string): YearMonth | null {
+  for (const month of Object.keys(manifest.bookmarks)) {
+    const bucket = _loadBucket<BookmarksBucket>('bookmarks', month)
+    if (bucket && bucket.bookmarks.some(b => b.target === targetCid)) return month
+  }
+  return null
+}
+
+/** Get all own bookmarks across all months from localStorage. */
+export function getAllMyBookmarks(): BookmarkRecord[] {
+  const bookmarks: BookmarkRecord[] = []
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i)
+    if (!key?.startsWith(`${BUCKET_PREFIX}bookmarks:`)) continue
+    try {
+      const bucket = JSON.parse(localStorage.getItem(key)!) as BookmarksBucket
+      bookmarks.push(...bucket.bookmarks)
+    } catch { /* skip */ }
+  }
+  return bookmarks
+}
+
+/** Fetch a peer's bookmarks for the given months by resolving bucket CIDs. */
+export async function fetchPeerBookmarks(
+  manifest: WallManifest,
+  months: YearMonth[],
+): Promise<BookmarkRecord[]> {
+  const results = await Promise.all(
+    months.map(async (m) => {
+      const cid = manifest.bookmarks?.[m]
+      if (!cid) return []
+      try {
+        const bucket = await catJson<BookmarksBucket>(cid)
+        return bucket.bookmarks
+      } catch {
+        console.warn('[profile] Failed to fetch bookmarks bucket', m)
+        return []
+      }
+    })
+  )
+  return results.flat()
 }
 
 // ── Drafts ────────────────────────────────────────────────────────────────────
@@ -818,13 +963,17 @@ async function _fetchManifest(cid: string): Promise<ResolvedManifest | null> {
   try {
     const raw = await catJson<any>(cid)
     if (raw.version === 1) return _convertRemoteV1(raw as WallManifestV1)
-    return raw as WallManifest
+    const m = raw as WallManifest
+    if (!m.bookmarks) m.bookmarks = {}
+    return m
   } catch {
     console.info('[profile] Flat fetch failed, trying legacy directory format')
     try {
       const raw = await catJson<any>(cid, 'manifest.json')
       if (raw.version === 1) return _convertRemoteV1(raw as WallManifestV1)
-      return raw as WallManifest
+      const m = raw as WallManifest
+      if (!m.bookmarks) m.bookmarks = {}
+      return m
     } catch {
       return null
     }
@@ -840,6 +989,7 @@ function _convertRemoteV1(v1: WallManifestV1): ResolvedManifest {
     following: v1.following,
     posts: {},
     likes: {},
+    bookmarks: {},
     peerRecords: v1.peerRecords,
     updatedAt: v1.updatedAt,
     _inlinePosts: v1.wall,
