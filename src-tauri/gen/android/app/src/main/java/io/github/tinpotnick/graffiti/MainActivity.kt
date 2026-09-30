@@ -1,4 +1,4 @@
-package com.graffiti.app
+package io.github.tinpotnick.graffiti
 
 import android.os.Bundle
 import androidx.activity.enableEdgeToEdge
