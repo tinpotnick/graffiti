@@ -1,12 +1,13 @@
 # Contributing to graffiti
 
-Thanks for your interest! graffiti is a small project and every contribution helps, whether it's a bug report, an idea, docs, pixel art for screenshots, or code.
+Thanks for your interest! graffiti is an experiment in building a social network on a decentralised file system. Every contribution helps, whether it's a bug report, docs, pixel art, code, or just a good idea for one of the [open problems](README.md#open-problems). Design discussion is as valuable here as code.
 
 By participating you agree to follow the [Code of Conduct](CODE_OF_CONDUCT.md).
 
 ## Ways to help
 
 - **Report bugs.** Open an issue using the bug report template. Include your platform (browser / desktop / Android) and any `[ipfs]` or `[profile]` lines from the console.
+- **Tackle an open problem.** Open an issue to think one through: pinning without sign-up, faster IPNS, tag moderation, notifications. A write-up of an approach, even one that doesn't work, is a contribution.
 - **Suggest features.** Open an issue first so we can talk through the design before you spend time on code. This matters especially for anything that touches the manifest format or IPNS behaviour.
 - **Improve docs.** Fixes to the README or [IPFS.md](IPFS.md) are always welcome.
 - **Write code.** Issues labelled `good first issue` are a good place to start.

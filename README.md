@@ -1,21 +1,51 @@
 # graffiti
 
-**A self-sovereign, decentralised social art app.** Draw pixel art, spray it on your wall, tag other people's walls, and follow your friends. Everything lives on [IPFS](https://ipfs.tech/). There's no central server and no account to sign up for.
+**An experiment: can a decentralised file system be the engine for a social network?**
+
+graffiti is a pixel-art social app built on [IPFS](https://ipfs.tech/) to find out. You draw on your wall, tag other people's walls, and follow your friends. There's no server, no database and no accounts: just content-addressed files, keypairs, and whatever the network can do with them.
 
 [![CI](https://github.com/tinpotnick/graffiti/actions/workflows/ci.yml/badge.svg)](https://github.com/tinpotnick/graffiti/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-![Status: alpha](https://img.shields.io/badge/status-alpha-orange.svg)
+![Status: experimental](https://img.shields.io/badge/status-experimental-purple.svg)
 
 ![Feed, paint and profile screens](docs/screenshots/hero.png)
 
-## Features
+## The experiment
+
+Social networks are usually a database owned by someone. IPFS offers something different: immutable, content-addressed files that anyone can host, plus IPNS, a mutable pointer that only the holder of a private key can update. graffiti asks how far you can get building a social network from just those two primitives.
+
+It's a **thought experiment that happens to run**, not a product. It works well enough to use and to learn from, but the interesting part is the set of problems it exposes. A graffiti wall turns out to be a good test bed, because walls are shared, public and constantly written over by people who don't own them.
+
+### Ideas it explores
+
+- **Writing on someone else's wall without write access.** Only you can update your IPNS name, so nobody can add to your wall directly. Instead, a tagger publishes just their *delta*, in their own space, with a pointer (`wallRef`) to your wall's CID. Each viewer's app composites every tag it can find on top of the original. The result is that a wall has no single canonical state: what you see depends on who you follow.
+- **Identity is a keypair.** Your PeerID is both your identity and your address. There's no sign-up, and no one can revoke it.
+- **Engagement as replication.** Bookmarking or really-liking a post pins it, so popular content ends up hosted by the people who value it, like a CDN driven by demand.
+- **Small, cheap updates.** Posts, likes and bookmarks are bucketed by month behind a ~1KB root manifest. A single like republishes one bucket, not your whole history.
+- **Discovery through the social graph.** Your follows' likes and bookmarks surface people you don't follow yet.
+
+### Open problems
+
+These are unsolved, and they're what make this interesting. Ideas and discussion are just as welcome as code.
+
+- **Ease of setup.** Content only stays online if it's pinned, which today means signing up for a pinning service and pasting in a JWT. That's a big ask for a social app.
+- **Speed.** Resolving IPNS names from a browser node can take seconds to minutes, and every wall means resolving everyone you follow.
+- **Availability.** IPNS records expire if you're offline for a couple of days, and browser nodes struggle with NAT traversal and the DHT.
+- **Moderation and consent.** You can't remove a tag from your own wall, because it lives in someone else's space. Viewers only see tags from people they follow, but is that enough?
+- **Deletion.** Content addressing means that once something is replicated, "delete" really means "stop pointing at it".
+- **Notifications.** How does a wall owner find out they've been tagged by someone they don't follow?
+- **Format stability.** The data model is still changing, and there's no migration story yet.
+
+See **[IPFS.md](IPFS.md)** for the architecture in depth, the non-standard choices, and notes on self-hosting a pinning node.
+
+## What you can do
 
 - **MY TAG**: a 64×64 pixel avatar that is your signature
-- **THE WALL**: a 320×180 canvas you post drawings to, with a 256-colour palette, spray can, shapes, mirror mode and PNG import/export
-- **Tag other walls**: draw over someone else's piece and your delta is composited on top
+- **THE WALL**: a 320×180 canvas with a 256-colour palette, spray can, shapes, mirror mode and PNG import/export
+- **Tag other walls**: draw over someone else's piece, and your delta is composited on top
 - **Text posts**: a markdown editor with drafts
-- **Like, really-like and bookmark**: engagement also re-pins content, so popular posts are replicated by the people who love them
-- **Follow by QR code or PeerID**: your identity is your IPFS keypair, and your IPNS name is your address
+- **Like, really-like and bookmark**
+- **Follow by QR code or PeerID**
 - **Desktop and Android** via [Tauri 2](https://tauri.app/)
 
 ## How it works
@@ -33,20 +63,7 @@ IPNS name (PeerID)
         └── displayName, updatedAt, version: 2
 ```
 
-Content is stored locally in IndexedDB and optionally pinned to a remote service ([Pinata](https://www.pinata.cloud/) today), so it stays reachable when your device is offline. Reads fall back to public IPFS gateways.
-
-See **[IPFS.md](IPFS.md)** for the full architecture, the non-standard choices, self-hosting a pinning node, and alternative providers.
-
-## Status
-
-graffiti is **alpha**. It works, but please be aware of the following:
-
-- **Pinning is effectively required.** Without a Pinata JWT (set it under *Account → Settings*), your content is only reachable while your app is open.
-- **IPNS records expire.** If you're offline for a couple of days, followers may be unable to resolve your wall until you come back online.
-- **Browser nodes have limited connectivity.** NAT traversal and DHT participation are unreliable, so discovery can be slow.
-- **The data format may change** before 1.0.
-
-Issues and ideas are very welcome. See [CONTRIBUTING.md](CONTRIBUTING.md).
+Content is stored locally in IndexedDB and optionally pinned to a remote service ([Pinata](https://www.pinata.cloud/) today), so it stays reachable when your device is offline. Reads fall back to public IPFS gateways. [IPFS.md](IPFS.md) has the details.
 
 ## Quick start
 
@@ -141,7 +158,7 @@ scripts/                   Docker-based dev/build helpers
 
 ## Contributing
 
-Contributions of all sizes are welcome: bug reports, pixel art, docs and code. Start with [CONTRIBUTING.md](CONTRIBUTING.md), and please follow our [Code of Conduct](CODE_OF_CONDUCT.md). To report a security issue, see [SECURITY.md](SECURITY.md).
+Contributions of all sizes are welcome: bug reports, ideas for the open problems above, pixel art, docs and code. Start with [CONTRIBUTING.md](CONTRIBUTING.md), and please follow our [Code of Conduct](CODE_OF_CONDUCT.md). To report a security issue, see [SECURITY.md](SECURITY.md).
 
 ## License
 

@@ -207,13 +207,21 @@ Each hop through the social graph adds another potential replica of popular cont
 
 ### Collaborative walls (others drawing on your wall)
 
-The current model is owner-publishes-everything: only the wall owner's Helia node writes to their manifest. For collaborative walls where others can contribute:
+IPNS is single-writer: only the owner's key can update their manifest. So how does anyone else draw on your wall?
 
-- **Option A: owner aggregates** — contributors send their drawings to the wall owner (via PubSub message, HTTP, etc.), and the owner adds them to their manifest. Simple, preserves single-writer IPNS semantics.
-- **Option B: linked manifests** — each user's manifest includes a section for "contributions to other walls". The wall owner's manifest links to contributor manifests. More decentralised but harder to render a unified wall view.
-- **Option C: shared mutable state** — use a CRDT or append-only log that multiple writers can update. Significantly more complex (OrbitDB, Merkle-CRDTs). Not needed initially.
+**What graffiti does today** (a variant of option B below): the tagger publishes only their delta image, in *their own* manifest, with `wallRef` (the CID of the wall they tagged) and `wallBounds`. When a viewer's app renders a wall, it gathers every post it knows about whose `wallRef` matches, and composites them over the original, oldest first.
 
-Option A is the simplest path and fits the current architecture.
+Consequences of this approach, some good and some open:
+
+- The owner never grants write access, and nothing in their manifest changes.
+- There is no canonical wall. Each viewer sees the tags from people *they* follow, so two people can see different versions of the same wall.
+- The owner can't remove a tag, and won't see tags from people they don't follow. Moderation and notifications are open problems.
+
+Alternatives considered:
+
+- **Option A: owner aggregates.** Contributors send their drawings to the wall owner (via a PubSub message, HTTP, etc.), and the owner adds them to their manifest. This gives a canonical, moderated wall, but the owner has to be online, and it re-centralises control.
+- **Option B: linked manifests.** Contributions live in the contributor's manifest and point at the wall. This is what's implemented, minus any link back from the owner. The owner's manifest could additionally list accepted contributors, to give an "official" view.
+- **Option C: shared mutable state.** Use a CRDT or append-only log that multiple writers can update (OrbitDB, Merkle-CRDTs). This is the most powerful option and also significantly more complex.
 
 ### Mobile
 

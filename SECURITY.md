@@ -4,7 +4,7 @@ graffiti handles cryptographic identities: each user's IPFS keypair *is* their a
 
 ## Supported versions
 
-graffiti is alpha software. Only the latest release and the `main` branch receive fixes.
+graffiti is an experiment, not production software. Only the latest release and the `main` branch receive fixes.
 
 ## Reporting a vulnerability
 
