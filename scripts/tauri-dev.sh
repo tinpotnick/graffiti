@@ -13,12 +13,6 @@ cd "$(dirname "$0")/.."
 
 BINARY=".docker-cache/tauri_target/debug/graffiti"
 
-# ── Kubo binary check ─────────────────────────────────────────────────────────
-if ! ls src-tauri/binaries/ipfs-* 1>/dev/null 2>&1; then
-  echo "Kubo binary not found. Downloading..."
-  ./scripts/download-kubo.sh
-fi
-
 # ── Build cache directories ───────────────────────────────────────────────────
 mkdir -p .docker-cache/{cargo,tauri_target}
 
@@ -46,8 +40,4 @@ if ! ldconfig -p 2>/dev/null | grep -q "libwebkit2gtk"; then
 fi
 
 echo "Launching Graffiti (Vite at http://localhost:1420)..."
-# Tell the binary where the project root is so it can locate the Kubo sidecar.
-# CARGO_MANIFEST_DIR is baked in as the Docker-internal path at compile time;
-# this env var gives the correct host path at runtime.
-export GRAFFITI_PROJECT_ROOT="$(pwd)"
 exec "$BINARY"
