@@ -2,7 +2,7 @@
 FROM node:20-bookworm AS frontend-builder
 
 # Install pnpm
-RUN npm install -g pnpm
+RUN corepack enable
 
 WORKDIR /app
 
@@ -40,7 +40,7 @@ RUN apt-get update && apt-get install -y \
 # Install Node.js and pnpm
 RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && apt-get install -y nodejs \
-    && npm install -g pnpm \
+    && corepack enable \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
