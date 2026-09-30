@@ -15,7 +15,7 @@
 import { createHelia, libp2pDefaults, type Helia } from 'helia'
 import { unixfs } from '@helia/unixfs'
 import { ipns, type IPNS } from '@helia/ipns'
-import { helia as heliaRouting, pubsub } from '@helia/ipns/routing'
+import { pubsub } from '@helia/ipns/routing'
 import { gossipsub } from '@chainsafe/libp2p-gossipsub'
 import { IDBBlockstore } from 'blockstore-idb'
 import { IDBDatastore } from 'datastore-idb'
@@ -54,7 +54,8 @@ export async function initHelia(): Promise<void> {
   _fs = unixfs(helia)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Helia's generic doesn't reflect runtime services
   const h = helia as any
-  _name = ipns(h, { routers: [heliaRouting(h), pubsub(h)] })
+  // ipns() already adds a router for helia.routing (DHT / delegated routing)
+  _name = ipns(h, { routers: [pubsub(h)] })
 }
 
 async function _getHelia(): Promise<Helia> {
