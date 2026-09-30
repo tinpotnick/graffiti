@@ -1,0 +1,51 @@
+name: Bug report
+description: Something isn't working
+labels: ["bug"]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, and what happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Go to …
+        2. Tap …
+        3. See …
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      multiple: true
+      options:
+        - Browser (dev server)
+        - Desktop (Linux)
+        - Desktop (macOS)
+        - Desktop (Windows)
+        - Android
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version / commit
+      placeholder: v0.1.0 or commit SHA
+  - type: dropdown
+    id: pinning
+    attributes:
+      label: Is a Pinata JWT configured?
+      options:
+        - "Yes"
+        - "No"
+        - Not sure
+  - type: textarea
+    id: logs
+    attributes:
+      label: Console logs
+      description: Any `[ipfs]`, `[profile]` or `[pinning]` lines from the browser/devtools console. Please redact your Pinata JWT.
+      render: text
