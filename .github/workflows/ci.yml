@@ -17,7 +17,7 @@ jobs:
     name: Type check & build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Type check
         run: docker compose run --rm frontend-check
       - name: Production build
@@ -27,7 +27,7 @@ jobs:
     name: Tauri (Rust) build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Cache cargo registry and target
         uses: actions/cache@v4
         with:
