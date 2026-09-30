@@ -1,8 +1,10 @@
 [package]
 name = "graffiti"
 version = "0.1.0"
-description = "A Tauri App"
-authors = ["you"]
+description = "A self-sovereign, decentralised social art app built on IPFS"
+authors = ["Nick Knight"]
+license = "MIT"
+repository = "https://github.com/tinpotnick/graffiti"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html

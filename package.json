@@ -1,7 +1,25 @@
 {
   "name": "graffiti",
   "version": "0.1.0",
-  "description": "",
+  "description": "A self-sovereign, decentralised social art app: draw pixel art, post it to your wall, follow others. Built on IPFS and Tauri.",
+  "author": "Nick Knight",
+  "homepage": "https://github.com/tinpotnick/graffiti",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/tinpotnick/graffiti.git"
+  },
+  "bugs": {
+    "url": "https://github.com/tinpotnick/graffiti/issues"
+  },
+  "keywords": [
+    "ipfs",
+    "helia",
+    "ipns",
+    "tauri",
+    "pixel-art",
+    "decentralized",
+    "social"
+  ],
   "type": "module",
   "scripts": {
     "dev": "vite dev",
