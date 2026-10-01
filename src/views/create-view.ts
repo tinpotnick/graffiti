@@ -1,5 +1,6 @@
 import { publishTextPost, updateTextPost, saveDraft, loadDrafts, deleteDraft, publishDraft, getAllMyPosts, type DraftEntry } from '../services/profile'
 import { catJson } from '../services/ipfs'
+import { navigate } from '../shell/paths'
 
 type MdEditorElement = HTMLElement & { value: string };
 type EditorChangeEvent = CustomEvent<{ value: string }>;
@@ -233,8 +234,7 @@ class CreateView extends HTMLElement {
         }
         this._clearEditor();
         try { localStorage.setItem("graffiti:home-view-mode", "feed"); } catch {}
-        window.history.pushState({}, "", "/");
-        window.dispatchEvent(new PopStateEvent("popstate"));
+        navigate("/");
       } catch (err) {
         console.error("[create] publish failed:", err);
       } finally {

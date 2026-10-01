@@ -9,6 +9,9 @@ export default defineConfig(async () => ({
   //
   // 1. prevent vite from obscuring rust errors
   clearScreen: false,
+  // Sub-path for static hosting, e.g. GRAFFITI_BASE=/graffiti/ for GitHub Pages
+  // @ts-expect-error process is a nodejs global
+  base: process.env.GRAFFITI_BASE ?? "/",
   build: {
     outDir: "build",
   },

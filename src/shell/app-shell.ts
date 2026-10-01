@@ -1,4 +1,5 @@
 import { initHelia } from "../services/ipfs";
+import { currentPath, toUrl } from "./paths";
 
 type ViewTag = "view-home" | "view-create" | "view-paint" | "view-account" | "view-post" | "view-saved";
 
@@ -33,7 +34,7 @@ class AppShell extends HTMLElement {
     super();
 
     this.onPopState = () => {
-      this.renderRoute(window.location.pathname);
+      this.renderRoute(currentPath());
     };
 
     this.onClick = (event: Event) => {
@@ -71,7 +72,7 @@ class AppShell extends HTMLElement {
 
   private async _boot() {
     await initHelia();
-    this.renderRoute(window.location.pathname);
+    this.renderRoute(currentPath());
   }
 
   disconnectedCallback() {
@@ -80,11 +81,11 @@ class AppShell extends HTMLElement {
   }
 
   private navigate(href: string) {
-    if (href === window.location.pathname + window.location.search) {
+    if (toUrl(href) === window.location.pathname + window.location.search) {
       return;
     }
-    window.history.pushState({}, "", href);
-    this.renderRoute(window.location.pathname);
+    window.history.pushState({}, "", toUrl(href));
+    this.renderRoute(currentPath());
   }
 
   private renderRoute(pathname: string) {

@@ -8,6 +8,8 @@ graffiti is a small but complete social app built on [IPFS](https://ipfs.tech/) 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 ![Status: experimental](https://img.shields.io/badge/status-experimental-purple.svg)
 
+**▶ [Try it in your browser](https://tinpotnick.github.io/graffiti/)**: no install needed. Your identity is created on the spot and stays in that browser.
+
 ![Feed, paint and profile screens](docs/screenshots/hero.png)
 
 ## The experiment
@@ -67,7 +69,7 @@ Content is stored locally in IndexedDB and optionally pinned to a remote service
 
 ## Quick start
 
-The only requirement is Docker with Docker Compose. You don't need Node, pnpm or Rust on your machine.
+The quickest way is the [hosted web app](https://tinpotnick.github.io/graffiti/). To run it locally, the only requirement is Docker with Docker Compose. You don't need Node, pnpm or Rust on your machine.
 
 ```sh
 git clone https://github.com/tinpotnick/graffiti.git

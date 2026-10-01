@@ -1,3 +1,5 @@
+import { currentPath } from "../shell/paths";
+
 const template = document.createElement("template");
 template.innerHTML = `
   <nav class="bottom-nav" aria-label="Primary">
@@ -109,7 +111,7 @@ class TopNav extends HTMLElement {
   };
 
   private _onPopState = () => {
-    this._updateActive(window.location.pathname);
+    this._updateActive(currentPath());
   };
 
   constructor() {
@@ -121,7 +123,7 @@ class TopNav extends HTMLElement {
   connectedCallback() {
     window.addEventListener("route-change", this._onRouteChange);
     window.addEventListener("popstate", this._onPopState);
-    this._updateActive(window.location.pathname);
+    this._updateActive(currentPath());
   }
 
   disconnectedCallback() {

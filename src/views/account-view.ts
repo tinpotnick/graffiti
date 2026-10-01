@@ -6,6 +6,7 @@ import { catBytes } from '../services/ipfs'
 import { hasPinataJwt, setPinataJwt, clearPinataJwt, getPinataGateway, setPinataGateway, clearPinataGateway } from '../services/pinning'
 import { getTheme, setTheme } from '../main'
 import type { ThemeChoice } from '../main'
+import { navigate } from '../shell/paths'
 
 type TabName = 'profile' | 'posts' | 'settings'
 
@@ -891,8 +892,7 @@ class AccountView extends HTMLElement {
         deletePost(btn.dataset.cid).then(() => this._renderMyPosts())
           .catch(err => console.warn('[account] delete post failed:', err))
       } else if (btn.classList.contains('post-edit-btn')) {
-        window.history.pushState({}, '', `/create?edit=${encodeURIComponent(btn.dataset.cid)}`)
-        window.dispatchEvent(new PopStateEvent('popstate'))
+        navigate(`/create?edit=${encodeURIComponent(btn.dataset.cid)}`)
       }
     })
 
