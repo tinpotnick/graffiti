@@ -28,14 +28,14 @@ It's a **thought experiment that happens to run**, not a product. It works well 
 
 ### Open problems
 
-These are unsolved, and they're what make this interesting. Ideas and discussion are just as welcome as code.
+These are unsolved, and they're what make this interesting. Each one has an issue labelled [`open problem`](https://github.com/tinpotnick/graffiti/labels/open%20problem), so jump in. Ideas and discussion are just as welcome as code.
 
-- **Ease of setup.** Content only stays online if it's pinned, which today means signing up for a pinning service and pasting in a JWT. That's a big ask for a social app.
-- **Speed.** Resolving IPNS names from a browser node can take seconds to minutes, and every wall means resolving everyone you follow.
-- **Availability.** IPNS records expire if you're offline for a couple of days, and browser nodes struggle with NAT traversal and the DHT.
-- **Moderation and consent.** You can't remove a tag from your own wall, because it lives in someone else's space. Viewers only see tags from people they follow, but is that enough?
-- **Deletion.** Content addressing means that once something is replicated, "delete" really means "stop pointing at it".
-- **Notifications.** How does a wall owner find out they've been tagged by someone they don't follow?
+- **Ease of setup.** Content only stays online if it's pinned, which today means signing up for a pinning service and pasting in a JWT. That's a big ask for a social app. ([#3](https://github.com/tinpotnick/graffiti/issues/3))
+- **Speed.** Resolving IPNS names from a browser node can take seconds to minutes, and every wall means resolving everyone you follow. ([#4](https://github.com/tinpotnick/graffiti/issues/4))
+- **Availability.** IPNS records expire if you're offline for a couple of days, and browser nodes struggle with NAT traversal and the DHT. ([#5](https://github.com/tinpotnick/graffiti/issues/5))
+- **Moderation and consent.** You can't remove a tag from your own wall, because it lives in someone else's space. Viewers only see tags from people they follow, but is that enough? ([#1](https://github.com/tinpotnick/graffiti/issues/1))
+- **Deletion.** Content addressing means that once something is replicated, "delete" really means "stop pointing at it". ([#6](https://github.com/tinpotnick/graffiti/issues/6))
+- **Notifications.** How does a wall owner find out they've been tagged by someone they don't follow? ([#2](https://github.com/tinpotnick/graffiti/issues/2))
 - **Format stability.** The data model is still changing, and there's no migration story yet.
 
 See **[IPFS.md](IPFS.md)** for the architecture in depth, the non-standard choices, and notes on self-hosting a pinning node.
