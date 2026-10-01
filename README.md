@@ -2,7 +2,7 @@
 
 **An experiment: can a decentralised file system be the engine for a social network?**
 
-graffiti is a pixel-art social app built on [IPFS](https://ipfs.tech/) to find out. You draw on your wall, tag other people's walls, and follow your friends. There's no server, no database and no accounts: just content-addressed files, keypairs, and whatever the network can do with them.
+graffiti is a small but complete social app built on [IPFS](https://ipfs.tech/) to find out. It has the usual social-network pieces: a profile, text posts, a feed of the people you follow, likes, bookmarks, and following by QR code. Its signature feature is pixel art: you draw on your own wall and tag other people's. There's no server, no database and no accounts: just content-addressed files, keypairs, and whatever the network can do with them.
 
 [![CI](https://github.com/tinpotnick/graffiti/actions/workflows/ci.yml/badge.svg)](https://github.com/tinpotnick/graffiti/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
