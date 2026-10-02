@@ -1013,17 +1013,24 @@ export async function resolveFollowedPeer(peerId: string): Promise<PeerResolutio
   }
 
   // 2. Fall back to local cache
-  const cached = _getCachedIPNSRecord(peerId)
-  if (cached) {
-    console.info('[profile] Using cached IPNS record for', peerId, '(resolved', new Date(cached.resolvedAt).toISOString(), ')')
-    try {
-      const manifest = await _fetchManifest(cached.cid)
-      if (manifest) return { manifest, stale: true, resolvedAt: cached.resolvedAt }
-    } catch {
-      console.warn('[profile] Cached CID fetch also failed for', peerId)
-    }
-  }
+  return resolveCachedPeer(peerId)
+}
 
+/**
+ * Resolve a followed peer from the local IPNS cache only — no network lookup.
+ * Fast when the manifest's blocks are already in IndexedDB, so views can show
+ * a peer's last-known wall while the live resolution is still in flight.
+ */
+export async function resolveCachedPeer(peerId: string): Promise<PeerResolution | null> {
+  const cached = _getCachedIPNSRecord(peerId)
+  if (!cached) return null
+  console.info('[profile] Using cached IPNS record for', peerId, '(resolved', new Date(cached.resolvedAt).toISOString(), ')')
+  try {
+    const manifest = await _fetchManifest(cached.cid)
+    if (manifest) return { manifest, stale: true, resolvedAt: cached.resolvedAt }
+  } catch {
+    console.warn('[profile] Cached CID fetch also failed for', peerId)
+  }
   return null
 }
 

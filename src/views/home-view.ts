@@ -1,14 +1,27 @@
 import {
-  loadManifest, getMyPeerId, resolveFollowedPeer,
+  loadManifest, getMyPeerId, resolveFollowedPeer, resolveCachedPeer,
   fetchPeerPostBuckets, fetchPeerInteractions, fetchPeerBookmarks,
   recentMonths, getAllMyPosts, getAllMyLikes, getAllMyBookmarks,
   likePost, unlikePost, bookmarkPost, unbookmarkPost,
 } from '../services/profile'
-import type { LikeRecord, BookmarkRecord, ResolvedManifest } from '../services/profile'
+import type {
+  LikeRecord, BookmarkRecord, ResolvedManifest, WallManifest, WallPost,
+  PeerResolution, PeerInteractions,
+} from '../services/profile'
 import type { FeedPost } from '../components/feed-item'
 import type { WallScrollElement } from '../components/wall-scroll'
 
 type FeedItemElement = HTMLElement & { post: FeedPost; myPeerId: string }
+
+interface PeerData {
+  peerId: string
+  tagCid: string
+  displayName?: string
+  posts: WallPost[]
+  interactions: PeerInteractions
+  stale: boolean
+  resolvedAt: number
+}
 
 const STYLES = `
   :host { display: block; }
@@ -53,6 +66,15 @@ const STYLES = `
     padding-top: 0.5rem;
   }
 
+  .finding {
+    text-align: center;
+    padding: 0.25rem 1rem 0.75rem;
+    font-family: var(--font-pixel);
+    font-size: 0.5rem;
+    letter-spacing: 2px;
+    color: var(--text-muted);
+  }
+
   .status {
     text-align: center;
     padding: 3rem 1rem;
@@ -75,6 +97,15 @@ class HomeView extends HTMLElement {
   private _refreshTimer: ReturnType<typeof setInterval> | null = null
   private _renderedCount = 0
   private _feedObserver: IntersectionObserver | null = null
+  private _manifest: WallManifest | null = null
+  /** Latest known data for each followed peer (cached or live). */
+  private readonly _peers = new Map<string, PeerData>()
+  /** Peers whose live resolution is still in flight. */
+  private readonly _pendingPeers = new Set<string>()
+  /** Peers we couldn't load at all on the last attempt (no live or cached data). */
+  private readonly _unreachablePeers = new Set<string>()
+  private _renderTimer: ReturnType<typeof setTimeout> | null = null
+  private _lastSignature = ''
 
   connectedCallback() {
     if (this.shadowRoot) return
@@ -184,154 +215,242 @@ class HomeView extends HTMLElement {
   private async _loadFeed() {
     try {
       const manifest = loadManifest()
-      const myPeerId = await getMyPeerId()
-      this._myPeerId = myPeerId
-      const months = recentMonths(3)
+      this._myPeerId = await getMyPeerId()
+      this._manifest = manifest
 
-      // ── Own data ──
-      const myPosts = getAllMyPosts()
-      const myLikes = getAllMyLikes()
-      const myLikeMap = new Map<string, LikeRecord>()
-      for (const l of myLikes) myLikeMap.set(l.target, l)
-
-      const myBookmarks = getAllMyBookmarks()
-      const myBookmarkSet = new Set<string>()
-      for (const b of myBookmarks) myBookmarkSet.add(b.target)
-
-      // Build FeedPost[] from own posts
-      const posts: FeedPost[] = myPosts.map(p => ({
-        cid: p.cid,
-        caption: p.caption,
-        timestamp: p.timestamp,
-        peerId: myPeerId,
-        tagCid: manifest.tag,
-        displayName: manifest.displayName || undefined,
-        type: p.type,
-        title: p.title,
-        updatedAt: p.updatedAt,
-        bounds: p.x != null ? { x: p.x, y: p.y!, w: p.w!, h: p.h! } : undefined,
-        wallRef: p.wallRef,
-        wallBounds: p.wallBounds,
-        myInteraction: (myLikeMap.get(p.cid)?.strength ?? 0) as 0 | 1 | 2,
-        bookmarked: myBookmarkSet.has(p.cid),
-      }))
-
-      // ── Interaction counts ──
-      const interactionCounts = new Map<string, { likes: number; reallyLikes: number }>()
-      const allReallyLikes: Array<LikeRecord & { byPeerId: string; byTagCid: string; byName?: string }> = []
-
-      // Count own likes
-      for (const l of myLikes) {
-        const c = interactionCounts.get(l.target) ?? { likes: 0, reallyLikes: 0 }
-        if (l.strength === 1) c.likes++
-        else c.reallyLikes++
-        interactionCounts.set(l.target, c)
+      // Forget peers that are no longer followed
+      for (const peerId of [...this._peers.keys()]) {
+        if (!manifest.following.includes(peerId)) this._peers.delete(peerId)
+      }
+      for (const peerId of [...this._unreachablePeers]) {
+        if (!manifest.following.includes(peerId)) this._unreachablePeers.delete(peerId)
       }
 
-      // ── Resolve peers ──
-      const peerResults = await Promise.all(
-        manifest.following.map(async (peerId) => {
-          const result = await resolveFollowedPeer(peerId)
-          if (!result) return null
-          const peerManifest = result.manifest
-
-          const inlinePosts = (peerManifest as ResolvedManifest)._inlinePosts
-          const [peerPosts, peerInteractions] = await Promise.all([
-            inlinePosts
-              ? Promise.resolve(inlinePosts)
-              : fetchPeerPostBuckets(peerManifest, months),
-            fetchPeerInteractions(peerManifest, months),
-          ])
-
-          return {
-            peerId,
-            tagCid: peerManifest.tag,
-            displayName: peerManifest.displayName || undefined,
-            posts: peerPosts,
-            interactions: peerInteractions,
-            stale: result.stale,
-            resolvedAt: result.resolvedAt,
-          }
-        })
-      )
-
-      for (const pr of peerResults) {
-        if (!pr) continue
-
-        // Add peer posts to feed
-        for (const p of pr.posts) {
-          posts.push({
-            cid: p.cid,
-            caption: p.caption,
-            timestamp: p.timestamp,
-            peerId: pr.peerId,
-            tagCid: pr.tagCid,
-            displayName: pr.displayName,
-            type: p.type,
-            title: p.title,
-            updatedAt: p.updatedAt,
-            bounds: p.x != null ? { x: p.x, y: p.y!, w: p.w!, h: p.h! } : undefined,
-            wallRef: p.wallRef,
-            wallBounds: p.wallBounds,
-            stale: pr.stale,
-            resolvedAt: pr.resolvedAt,
-            myInteraction: (myLikeMap.get(p.cid)?.strength ?? 0) as 0 | 1 | 2,
-            bookmarked: myBookmarkSet.has(p.cid),
-          })
-        }
-
-        // Aggregate interaction counts
-        for (const l of pr.interactions.likes) {
-          const c = interactionCounts.get(l.target) ?? { likes: 0, reallyLikes: 0 }
-          if (l.strength === 1) c.likes++
-          else c.reallyLikes++
-          interactionCounts.set(l.target, c)
-
-          if (l.strength === 2) {
-            allReallyLikes.push({
-              ...l,
-              byPeerId: pr.peerId,
-              byTagCid: pr.tagCid,
-              byName: pr.displayName,
-            })
-          }
-        }
-      }
-
-      // ── Inject really-likes as feed items (repost-style) ──
-      for (const rl of allReallyLikes) {
-        const original = posts.find(p => p.cid === rl.target)
-        if (original) {
-          posts.push({
-            ...original,
-            timestamp: rl.timestamp,
-            reallyLikedBy: rl.byPeerId,
-            reallyLikedByTagCid: rl.byTagCid,
-            reallyLikedByName: rl.byName,
-          })
-        }
-      }
-
-      // ── Apply interaction counts to all posts ──
-      for (const post of posts) {
-        const counts = interactionCounts.get(post.cid)
-        if (counts) {
-          post.likeCount = counts.likes
-          post.reallyLikeCount = counts.reallyLikes
-        }
-      }
-
-      // Sort newest first
-      posts.sort((a, b) => b.timestamp - a.timestamp)
-
-      this._posts = posts
+      // Own posts are local: show them (plus any peers we already have) at once
       this._loading = false
-      this._renderView()
+      this._rebuildPosts()
+
+      // Each followed peer loads independently and is merged in as it arrives
+      for (const peerId of manifest.following) this._loadPeer(peerId)
     } catch (err) {
       console.error('[home] Failed to load feed:', err)
       const content = this._root.querySelector('.content')!
       content.innerHTML = '<div class="status">FAILED TO LOAD FEED</div>'
     }
+  }
+
+  /** Load one followed peer: last-known (cached) wall first, then the live one. */
+  private async _loadPeer(peerId: string) {
+    if (this._pendingPeers.has(peerId)) return
+    this._pendingPeers.add(peerId)
+    this._scheduleRender()
+
+    const months = recentMonths(3)
+    const load = async (result: PeerResolution | null): Promise<PeerData | null> => {
+      if (!result) return null
+      const peerManifest = result.manifest
+      const inlinePosts = (peerManifest as ResolvedManifest)._inlinePosts
+      const [posts, interactions] = await Promise.all([
+        inlinePosts ? Promise.resolve(inlinePosts) : fetchPeerPostBuckets(peerManifest, months),
+        fetchPeerInteractions(peerManifest, months),
+      ])
+      return {
+        peerId,
+        tagCid: peerManifest.tag,
+        displayName: peerManifest.displayName || undefined,
+        posts,
+        interactions,
+        stale: result.stale,
+        resolvedAt: result.resolvedAt,
+      }
+    }
+
+    try {
+      // Cached first, unless we already have something for this peer
+      if (!this._peers.has(peerId)) {
+        const cached = await load(await resolveCachedPeer(peerId)).catch(() => null)
+        if (cached && !this._peers.has(peerId)) {
+          this._peers.set(peerId, cached)
+          this._scheduleRender()
+        }
+      }
+
+      const live = await load(await resolveFollowedPeer(peerId))
+      if (live && this._manifest?.following.includes(peerId)) this._peers.set(peerId, live)
+      if (live || this._peers.has(peerId)) this._unreachablePeers.delete(peerId)
+      else this._unreachablePeers.add(peerId)
+    } catch (err) {
+      console.warn('[home] Failed to load peer', peerId, err)
+    } finally {
+      this._pendingPeers.delete(peerId)
+      this._scheduleRender()
+    }
+  }
+
+  /** Coalesce bursts of peer arrivals into one rebuild + render. */
+  private _scheduleRender() {
+    if (this._renderTimer) return
+    this._renderTimer = setTimeout(() => {
+      this._renderTimer = null
+      this._rebuildPosts()
+    }, 250)
+  }
+
+  /** Merge own data and every loaded peer into the feed, then re-render if it changed. */
+  private _rebuildPosts() {
+    const manifest = this._manifest
+    if (!manifest) return
+    const myPeerId = this._myPeerId
+
+    // ── Own data ──
+    const myPosts = getAllMyPosts()
+    const myLikes = getAllMyLikes()
+    const myLikeMap = new Map<string, LikeRecord>()
+    for (const l of myLikes) myLikeMap.set(l.target, l)
+
+    const myBookmarks = getAllMyBookmarks()
+    const myBookmarkSet = new Set<string>()
+    for (const b of myBookmarks) myBookmarkSet.add(b.target)
+
+    // Build FeedPost[] from own posts
+    const posts: FeedPost[] = myPosts.map(p => ({
+      cid: p.cid,
+      caption: p.caption,
+      timestamp: p.timestamp,
+      peerId: myPeerId,
+      tagCid: manifest.tag,
+      displayName: manifest.displayName || undefined,
+      type: p.type,
+      title: p.title,
+      updatedAt: p.updatedAt,
+      bounds: p.x != null ? { x: p.x, y: p.y!, w: p.w!, h: p.h! } : undefined,
+      wallRef: p.wallRef,
+      wallBounds: p.wallBounds,
+      myInteraction: (myLikeMap.get(p.cid)?.strength ?? 0) as 0 | 1 | 2,
+      bookmarked: myBookmarkSet.has(p.cid),
+    }))
+
+    // ── Interaction counts ──
+    const interactionCounts = new Map<string, { likes: number; reallyLikes: number }>()
+    const allReallyLikes: Array<LikeRecord & { byPeerId: string; byTagCid: string; byName?: string }> = []
+
+    // Count own likes
+    for (const l of myLikes) {
+      const c = interactionCounts.get(l.target) ?? { likes: 0, reallyLikes: 0 }
+      if (l.strength === 1) c.likes++
+      else c.reallyLikes++
+      interactionCounts.set(l.target, c)
+    }
+
+    for (const pr of this._peers.values()) {
+      // Add peer posts to feed
+      for (const p of pr.posts) {
+        posts.push({
+          cid: p.cid,
+          caption: p.caption,
+          timestamp: p.timestamp,
+          peerId: pr.peerId,
+          tagCid: pr.tagCid,
+          displayName: pr.displayName,
+          type: p.type,
+          title: p.title,
+          updatedAt: p.updatedAt,
+          bounds: p.x != null ? { x: p.x, y: p.y!, w: p.w!, h: p.h! } : undefined,
+          wallRef: p.wallRef,
+          wallBounds: p.wallBounds,
+          stale: pr.stale,
+          resolvedAt: pr.resolvedAt,
+          myInteraction: (myLikeMap.get(p.cid)?.strength ?? 0) as 0 | 1 | 2,
+          bookmarked: myBookmarkSet.has(p.cid),
+        })
+      }
+
+      // Aggregate interaction counts
+      for (const l of pr.interactions.likes) {
+        const c = interactionCounts.get(l.target) ?? { likes: 0, reallyLikes: 0 }
+        if (l.strength === 1) c.likes++
+        else c.reallyLikes++
+        interactionCounts.set(l.target, c)
+
+        if (l.strength === 2) {
+          allReallyLikes.push({
+            ...l,
+            byPeerId: pr.peerId,
+            byTagCid: pr.tagCid,
+            byName: pr.displayName,
+          })
+        }
+      }
+    }
+
+    // ── Inject really-likes as feed items (repost-style) ──
+    for (const rl of allReallyLikes) {
+      const original = posts.find(p => p.cid === rl.target)
+      if (original) {
+        posts.push({
+          ...original,
+          timestamp: rl.timestamp,
+          reallyLikedBy: rl.byPeerId,
+          reallyLikedByTagCid: rl.byTagCid,
+          reallyLikedByName: rl.byName,
+        })
+      }
+    }
+
+    // ── Apply interaction counts to all posts ──
+    for (const post of posts) {
+      const counts = interactionCounts.get(post.cid)
+      if (counts) {
+        post.likeCount = counts.likes
+        post.reallyLikeCount = counts.reallyLikes
+      }
+    }
+
+    // Sort newest first
+    posts.sort((a, b) => b.timestamp - a.timestamp)
+
+    // Only re-render when something visible changed, so a background refresh
+    // that finds nothing new doesn't reset the scroll position.
+    const signature = JSON.stringify(
+      posts.map(p => [p.cid, p.stale, p.likeCount, p.reallyLikeCount, p.reallyLikedBy, p.myInteraction, p.bookmarked]),
+    )
+    this._posts = posts
+    if (signature === this._lastSignature && this._root.querySelector('.content > :not(.status)')) {
+      this._updateFinding()
+      return
+    }
+    this._lastSignature = signature
+    this._renderView()
+  }
+
+  /** Show how many followed walls are still being found, without re-rendering the feed. */
+  private _updateFinding() {
+    const content = this._root.querySelector('.content')!
+    const pending = this._pendingPeers.size
+    const following = this._manifest?.following.length ?? 0
+
+    if (this._posts.length === 0) {
+      if (pending > 0) {
+        content.innerHTML = '<div class="status">FINDING WALLS ON THE NETWORK…<br><br>WITH NO SERVERS THIS CAN TAKE A MINUTE</div>'
+      } else if (this._unreachablePeers.size > 0) {
+        content.innerHTML = '<div class="status">COULDN\'T REACH THE WALLS YOU FOLLOW<br><br>THEIR OWNERS MAY BE OFFLINE, OR NOT PINNING<br><br>PAINT YOUR OWN TO GET STARTED</div>'
+      } else {
+        content.innerHTML = '<div class="status">NO POSTS YET</div>'
+      }
+      return
+    }
+
+    let finding = content.querySelector<HTMLElement>('.finding')
+    if (pending === 0) {
+      finding?.remove()
+      return
+    }
+    if (!finding) {
+      finding = document.createElement('div')
+      finding.className = 'finding'
+      content.prepend(finding)
+    }
+    finding.textContent = `FINDING ${pending} OF ${following} WALL${following === 1 ? '' : 'S'}…`
   }
 
   private _renderView() {
@@ -343,7 +462,7 @@ class HomeView extends HTMLElement {
     }
 
     if (this._posts.length === 0) {
-      content.innerHTML = '<div class="status">NO POSTS YET</div>'
+      this._updateFinding()
       return
     }
 
@@ -383,6 +502,8 @@ class HomeView extends HTMLElement {
         this._feedObserver.observe(sentinel)
       }
     }
+
+    this._updateFinding()
   }
 
   private _appendFeedPage(feed: HTMLElement) {
