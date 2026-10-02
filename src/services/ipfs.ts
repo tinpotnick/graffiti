@@ -109,37 +109,38 @@ export async function addJson(obj: unknown): Promise<string> {
 
 // ── Read content ───────────────────────────────────────────────────────────────
 
-// Public IPFS gateways for fallback when Helia's bitswap/delegated routing fails.
-const PUBLIC_GATEWAYS = [
-  'https://ipfs.io/ipfs',
-  'https://dweb.link/ipfs',
-]
+// How long Helia gets to find and fetch a CID from peers before falling back.
+// The first fetch includes connection warm-up and can take ~10s.
+const HELIA_FETCH_TIMEOUT_MS = 30_000
 
-/** Build gateway list — Pinata dedicated gateway first (if configured), then public. */
+/**
+ * HTTP fallback when Helia can't fetch from peers: the user's own Pinata
+ * gateway, if configured. The sponsored public gateways (ipfs.io, dweb.link)
+ * are rate-limited and being retired, so they are no longer used.
+ */
 function _getGateways(): string[] {
   const pinata = getPinataGateway()
-  if (pinata) return [`${pinata}/ipfs`, ...PUBLIC_GATEWAYS]
-  return PUBLIC_GATEWAYS
+  return pinata ? [`${pinata}/ipfs`] : []
 }
 
 /**
  * Fetch raw bytes for a CID, optionally resolving a path within a UnixFS directory.
- * Tries Helia first (instant for local content), falls back to public IPFS gateways
- * if the network fetch fails (browser nodes often can't reach peers directly).
+ * Tries Helia first (local IndexedDB, then peers via libp2p and delegated
+ * routing), then falls back to the user's Pinata gateway if one is configured.
  */
 export async function catBytes(cid: string, path?: string): Promise<Uint8Array> {
   // Try Helia first — instant for local content (own posts in IndexedDB)
   try {
     const fs = await _getFs()
     const chunks: Uint8Array[] = []
-    const opts: Record<string, unknown> = { signal: AbortSignal.timeout(10_000) }
+    const opts: Record<string, unknown> = { signal: AbortSignal.timeout(HELIA_FETCH_TIMEOUT_MS) }
     if (path) opts.path = path
     for await (const chunk of fs.cat(CID.parse(cid), opts)) {
       chunks.push(chunk)
     }
     return _concatChunks(chunks)
   } catch (err) {
-    console.warn('[ipfs] Helia fetch failed, trying gateways:', (err as Error).message)
+    console.warn('[ipfs] Helia fetch failed:', (err as Error).message)
   }
 
   // Gateway fallback — try each until one succeeds
@@ -154,7 +155,7 @@ export async function catBytes(cid: string, path?: string): Promise<Uint8Array> 
     } catch { /* try next gateway */ }
   }
 
-  throw new Error(`Failed to fetch ${cid}${path ? '/' + path : ''} from Helia and all gateways`)
+  throw new Error(`Failed to fetch ${cid}${path ? '/' + path : ''} from Helia${_getGateways().length ? ' or the Pinata gateway' : ''}`)
 }
 
 function _concatChunks(chunks: Uint8Array[]): Uint8Array {
