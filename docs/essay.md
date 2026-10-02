@@ -91,6 +91,8 @@ These are why I'm calling it an experiment.
 - **Notifications.** If someone you don't follow tags your wall, you have no way of knowing. There's no inbox without a server. ([#2](https://github.com/tinpotnick/graffiti/issues/2))
 - **Deletion.** Once content is replicated, "delete" just means "stop pointing at it". The same mechanism that makes popular posts resilient makes regrettable ones permanent. ([#6](https://github.com/tinpotnick/graffiti/issues/6))
 
+And a new problem arrived while I was writing this. At the end of September 2026, the funding for the team maintaining Helia, Kubo and the rest of the core IPFS stack ended, and the free public gateways (`ipfs.io`, `dweb.link`) are being retired. graffiti used those gateways as a fallback. It doesn't any more: it now fetches straight from peers, which works, but it still relies on Protocol Labs' delegated routing service to find those peers quickly. That sharpens the question in the title. It's not just whether IPFS can carry a social network, but whether it can do it without anyone sponsoring the infrastructure in the middle.
+
 ## So, can IPFS be a social network?
 
 I don't know. But I like how this little application turned out. It shows that an immutable object store can hold social information, and that the shape of the store dictates how the presentation layer can work. In a lot of ways, those constraints are what make it fun.

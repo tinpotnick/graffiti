@@ -36,6 +36,7 @@ These are unsolved, and they're what make this interesting. Each one has an issu
 
 - **Ease of setup.** Content only stays online if it's pinned, which today means signing up for a pinning service and pasting in a JWT. That's a big ask for a social app. ([#3](https://github.com/tinpotnick/graffiti/issues/3))
 - **Speed.** Resolving IPNS names from a browser node can take seconds to minutes, and every wall means resolving everyone you follow. ([#4](https://github.com/tinpotnick/graffiti/issues/4))
+- **Shared infrastructure.** The sponsored public gateways are being retired, and finding peers quickly still relies on delegated routing run by Protocol Labs, whose future is unclear after IPFS maintenance funding ended in September 2026. ([#4](https://github.com/tinpotnick/graffiti/issues/4))
 - **Availability.** IPNS records expire if you're offline for a couple of days, and browser nodes struggle with NAT traversal and the DHT. ([#5](https://github.com/tinpotnick/graffiti/issues/5))
 - **Moderation and consent.** You can't remove a tag from your own wall, because it lives in someone else's space. Viewers only see tags from people they follow, but is that enough? ([#1](https://github.com/tinpotnick/graffiti/issues/1))
 - **Deletion.** Content addressing means that once something is replicated, "delete" really means "stop pointing at it". ([#6](https://github.com/tinpotnick/graffiti/issues/6))
@@ -69,7 +70,7 @@ IPNS name (PeerID)
         └── displayName, updatedAt, version: 2
 ```
 
-Content is stored locally in IndexedDB and optionally pinned to a remote service ([Pinata](https://www.pinata.cloud/) today), so it stays reachable when your device is offline. Reads fall back to public IPFS gateways. [IPFS.md](IPFS.md) has the details.
+Content is stored locally in IndexedDB and optionally pinned to a remote service ([Pinata](https://www.pinata.cloud/) today), so it stays reachable when your device is offline. Reads come straight from peers, with your Pinata gateway as a fallback. [IPFS.md](IPFS.md) has the details.
 
 ## Quick start
 
@@ -143,7 +144,7 @@ src/
     md-editor.ts           Tiptap markdown editor
     top-nav.ts             bottom navigation
   services/
-    ipfs.ts                Helia node: add/cat, IPNS publish/resolve, gateway fallback
+    ipfs.ts                Helia node: add/cat, IPNS publish/resolve, Pinata fallback
     profile.ts             manifest, posts, likes, bookmarks, follows
     pinning.ts             Pinata remote pinning
     compositing.ts         wall + tag image compositing

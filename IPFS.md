@@ -54,11 +54,9 @@ Steps 2–4 are non-blocking. A failed pin doesn't prevent local publishing; the
 2. **Fetch manifest** — download the JSON by CID
 3. **Fetch images** — download each referenced CID (avatar, wall posts)
 
-Content is fetched through Helia first (instant for local data in IndexedDB). If Helia's bitswap/routing fails (common for browser nodes behind NAT), the app falls back to public IPFS gateways:
+Content is fetched through Helia first: instantly for local data in IndexedDB, otherwise directly from peers. Helia finds providers through delegated routing (`delegated-ipfs.dev`) and the DHT, then dials them over browser-friendly transports (WebRTC, WebTransport, secure WebSockets). Helia gets 30 seconds, because the first fetch includes connection warm-up and can take around 10 seconds. If that fails and you've configured a Pinata gateway, the app tries it next.
 
-- `https://ipfs.io/ipfs/<CID>`
-- `https://dweb.link/ipfs/<CID>`
-- `https://cloudflare-ipfs.com/ipfs/<CID>`
+The sponsored public gateways (`ipfs.io`, `dweb.link`) used to be a fallback too. They're now rate-limited and being retired (see [IPFS is moving beyond the sponsored gateways](https://blog.ipfs.tech/2026-08-beyond-sponsored-gateways/)), so graffiti no longer uses them.
 
 ## Non-standard choices and known limitations
 
@@ -70,7 +68,7 @@ The IPFS node runs entirely in the browser using WebRTC/WebSocket transports. Th
 
 - **No direct TCP connections** — the node can't dial or be dialled by standard Kubo nodes
 - **NAT traversal** — relies on relay servers and WebRTC STUN/TURN; connectivity is unreliable
-- **No persistent daemon** — when the tab closes, the node goes offline. Content is only reachable via the pinning service or gateways.
+- **No persistent daemon** — when the tab closes, the node goes offline. Content is only reachable via the pinning service or other peers that hold it.
 - **IndexedDB storage limits** — browsers may evict the blockstore under storage pressure
 
 ### Fire-and-forget pinning
@@ -85,9 +83,11 @@ IPNS records are published via GossipSub (instant for connected peers) and the D
 - DHT propagation can take minutes, and browser nodes often can't participate in the DHT effectively
 - IPNS records have a limited lifetime and need periodic re-publishing (Helia handles this automatically while the node is running)
 
-### Gateway fallback for reads
+### Reads depend on reachable providers
 
-Fetching content from public gateways means those gateways must be able to find the content on the IPFS network. This only works if the content has been pinned by a reachable node (Pinata, a self-hosted node, etc.). Without pinning, gateway fetches will timeout.
+With no public gateway fallback, someone else's content only loads if a peer the browser can dial is providing it: their own app while it's open, a pinning service, a self-hosted node, or anyone who re-pinned it. Delegated routing (`delegated-ipfs.dev`) is still how a browser finds those peers quickly. That service is run by Protocol Labs, and its long-term future is unclear after the end of Shipyard's maintenance funding in September 2026. Removing that dependency, for example by also querying other routers or the DHT directly, is part of [open problem #4](https://github.com/tinpotnick/graffiti/issues/4).
+
+[`@helia/verified-fetch`](https://www.npmjs.com/package/@helia/verified-fetch) is the officially recommended replacement for gateway fetches. It isn't used yet: its default fallback gateway, `trustless-gateway.link`, was timing out when tested (October 2026), and Helia already fetches from peers directly.
 
 ### CID version
 
