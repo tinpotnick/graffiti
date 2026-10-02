@@ -10,6 +10,8 @@ graffiti is a small but complete social app built on [IPFS](https://ipfs.tech/) 
 
 **▶ [Try it in your browser](https://tinpotnick.github.io/graffiti/)**: no install needed. Your identity is created on the spot and stays in that browser.
 
+📝 **Read the essay:** [Can IPFS be a social network?](https://tinpotnick.github.io/graffiti/essay/)
+
 ![Feed, paint and profile screens](docs/screenshots/hero.png)
 
 <sub>The robots on the wall are a tribute to street artist [migtherobot](https://migtherobot.com/), whose robots you'll find all over Amman. All credit for the character goes to them.</sub>

@@ -19,8 +19,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - name: Build
-        run: docker compose run --rm -e GRAFFITI_BASE=/graffiti/ frontend-build
+      - name: Build app and essay
+        run: >
+          docker compose run --rm -e GRAFFITI_BASE=/graffiti/ frontend-build
+          bash -lc "corepack enable && pnpm config set store-dir /pnpm/store &&
+          pnpm install --no-frozen-lockfile && pnpm run build && pnpm run build:essay"
       - name: SPA fallback
         # GitHub Pages serves 404.html for unknown paths, so deep links like
         # /graffiti/paint still boot the app.
