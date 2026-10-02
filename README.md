@@ -12,6 +12,8 @@ graffiti is a small but complete social app built on [IPFS](https://ipfs.tech/) 
 
 ![Feed, paint and profile screens](docs/screenshots/hero.png)
 
+<sub>The robots on the wall are a tribute to the Amman street artist [migtherobot](https://migtherobot.com/), and all credit for the character goes to them.</sub>
+
 ## The experiment
 
 Social networks are usually a database owned by someone. IPFS offers something different: immutable, content-addressed files that anyone can host, plus IPNS, a mutable pointer that only the holder of a private key can update. graffiti asks how far you can get building a social network from just those two primitives.
