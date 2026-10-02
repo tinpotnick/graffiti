@@ -10,6 +10,8 @@ graffiti is a small but complete social app built on [IPFS](https://ipfs.tech/) 
 
 **▶ [Try it in your browser](https://tinpotnick.github.io/graffiti/)**: no install needed. Your identity is created on the spot and stays in that browser.
 
+> **Be patient on first load.** There are no servers, so your browser has to find and connect to other peers before anyone else's walls can appear. That usually takes a few seconds, but it can take a minute, and occasionally something won't load at all. Your own posts are local and appear instantly. That slowness is one of the things this experiment is about: see [#4](https://github.com/tinpotnick/graffiti/issues/4).
+
 📝 **Read the essay:** [Can IPFS be a social network?](https://tinpotnick.github.io/graffiti/essay/)
 
 ![Feed, paint and profile screens](docs/screenshots/hero.png)

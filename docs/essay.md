@@ -4,7 +4,7 @@ Every social network I've used is, underneath, a database that belongs to someon
 
 So I built **graffiti**, a small social app with no server, no database and no accounts. Content lives on [IPFS](https://ipfs.tech/), identity is a keypair, and everything runs in your browser. It has the usual pieces: a profile, posts, a feed, likes, bookmarks and following. Its centrepiece is a pixel-art wall you can paint on, and that other people can tag.
 
-You can [try it in your browser](https://tinpotnick.github.io/graffiti/), and the [code is on GitHub](https://github.com/tinpotnick/graffiti).
+You can [try it in your browser](https://tinpotnick.github.io/graffiti/), and the [code is on GitHub](https://github.com/tinpotnick/graffiti). Be patient on first load. With no servers, your browser has to find other peers before their walls appear, which can take anything from a few seconds to a minute. Why that is, is part of the story.
 
 This isn't a product pitch. It's a thought experiment that happens to run. What I find interesting is the set of problems it exposes.
 
